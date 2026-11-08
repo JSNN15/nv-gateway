@@ -1,6 +1,6 @@
 // Intermediario entre las páginas de jsnn15.github.io y la API de NVIDIA.
 // La clave vive solo aquí, como secreto NVIDIA_API_KEY. Cada ruta arma su propio prompt:
-// no es un proxy abierto, solo hace las cuatro tareas de las páginas.
+// no es un proxy abierto, solo hace las tareas fijas de las páginas.
 const ORIGINS = ['https://jsnn15.github.io', 'http://localhost:8770', 'http://127.0.0.1:8770'];
 const BASE = 'https://integrate.api.nvidia.com/v1';
 const VLM = 'nvidia/nemotron-3.5-super-vl-120b-a12b';
@@ -58,6 +58,27 @@ Revisa la foto y entrega SOLO un objeto JSON, en español de Chile, con esta for
  "hallazgos": [{"titulo": "corto", "detalle": "qué se ve y por qué importa", "severidad": "alta" | "media" | "baja", "accion": "qué hacer, concreto", "caja": [x1, y1, x2, y2]}],
  "no_se_puede_evaluar": "lo que la foto no permite confirmar"}
 Reglas: caja en coordenadas normalizadas de 0 a 1000 sobre la imagen (x1,y1 arriba a la izquierda). Máximo 6 hallazgos, ordenados por severidad. Describe solo lo que se ve; si algo es dudoso dilo en el detalle. Si la foto no es de una instalación industrial, devuelve hallazgos vacíos y explícalo en el resumen.`;
+// EPP por sector: la lista vive en el servidor; la página solo elige el sector.
+const EPP = {
+  construccion: {n: 'construcción', items: [['casco', 'casco de seguridad'], ['chaleco', 'chaleco o ropa reflectante'], ['calzado', 'calzado de seguridad'], ['guantes', 'guantes de trabajo'], ['lentes', 'lentes de seguridad'], ['arnes', 'arnés con línea de vida (solo si trabaja a más de 1,8 m o en borde abierto)']]},
+  mineria: {n: 'minería (rajo o subterránea)', items: [['casco', 'casco de seguridad (con lámpara en subterránea)'], ['chaleco', 'chaleco o ropa reflectante'], ['calzado', 'calzado de seguridad'], ['lentes', 'lentes de seguridad'], ['guantes', 'guantes de trabajo'], ['auditiva', 'protección auditiva (si hay equipos ruidosos)'], ['respirador', 'respirador (si hay polvo o gases)']]},
+  electrico: {n: 'trabajos eléctricos', items: [['casco', 'casco dieléctrico'], ['guantes', 'guantes dieléctricos o de cuero según tarea'], ['careta', 'lentes o careta facial contra arco'], ['ropa', 'ropa ignífuga de manga larga'], ['calzado', 'calzado dieléctrico'], ['arnes', 'arnés (solo si trabaja en altura o en poste)']]},
+  soldadura: {n: 'soldadura y metalmecánica', items: [['careta', 'careta de soldar o protector facial'], ['lentes', 'lentes de seguridad'], ['guantes', 'guantes de cuero'], ['ropa', 'ropa ignífuga, coleto o delantal de cuero'], ['calzado', 'calzado de seguridad'], ['auditiva', 'protección auditiva (si esmerila o corta)']]},
+  alimentos: {n: 'industria de alimentos', items: [['cofia', 'cofia o gorro que cubra el pelo'], ['mascarilla', 'mascarilla'], ['guantes', 'guantes'], ['ropa', 'ropa de trabajo limpia o delantal'], ['calzado', 'botas o calzado de seguridad']]},
+  agro: {n: 'agrícola', items: [['guantes', 'guantes'], ['respirador', 'respirador o mascarilla (si aplica agroquímicos)'], ['lentes', 'lentes (si aplica agroquímicos)'], ['ropa', 'ropa de manga larga'], ['calzado', 'botas o calzado cerrado'], ['sombrero', 'protección solar (sombrero o legionario)']]},
+  industrial: {n: 'planta industrial general', items: [['casco', 'casco de seguridad'], ['lentes', 'lentes de seguridad'], ['guantes', 'guantes de trabajo'], ['calzado', 'calzado de seguridad'], ['chaleco', 'chaleco o ropa reflectante'], ['auditiva', 'protección auditiva (si hay ruido)']]}
+};
+const eppPrompt = (sec) => { const S = EPP[sec] || EPP.industrial; return `Eres un experto en prevención de riesgos laborales en Chile (DS 594, Ley 16.744). Revisas una foto de un trabajo en el sector ${S.n}.
+EPP exigido en este sector, con su identificador: ${S.items.map(([k, d]) => `${k} = ${d}`).join('; ')}.
+Para cada persona visible (máximo 8, primero las más grandes en la imagen) evalúa cada EPP de la lista. Entrega SOLO un objeto JSON en español de Chile:
+{"resumen": "una o dos frases sobre el cumplimiento",
+ "nivel": "cumple" | "observaciones" | "critico",
+ "personas": [{"n": 1, "caja": [x1, y1, x2, y2], "actividad": "qué está haciendo, corto",
+   "epp": {${S.items.map(([k]) => `"${k}": {"estado": "ok" | "falta" | "incorrecto" | "no_visible" | "no_aplica", "nota": "corta"}`).join(', ')}},
+   "riesgo": "alto" | "medio" | "bajo", "accion": "qué corregir, concreto"}],
+ "condiciones": [{"titulo": "corto", "detalle": "condición insegura visible", "severidad": "alta" | "media" | "baja", "caja": [x1, y1, x2, y2]}],
+ "no_se_puede_evaluar": "lo que la foto no permite confirmar"}
+Reglas: cajas en coordenadas normalizadas de 0 a 1000 (x1,y1 arriba a la izquierda), la caja de una persona la cubre de pies a cabeza. "no_visible" si esa parte del cuerpo no se ve o la persona está muy lejos para afirmarlo; "no_aplica" SOLO para los EPP que tienen una condición entre paréntesis y esa condición no se da (por ejemplo arnés sin trabajo en altura); los demás EPP siempre se exigen, así que si no se ven puestos es "falta". No adivines: ante la duda usa "no_visible". "incorrecto" es EPP presente pero mal usado (casco sin abrochar en altura, lentes en la frente, chaleco abierto). Riesgo alto si falta un EPP crítico para la tarea que hace. Condiciones: máximo 4, solo lo que se ve (trabajo en altura sin protección colectiva, chispas sin resguardo, orden y aseo). Si no hay personas, personas vacío y explícalo en el resumen.`; };
 const GAUGE_PROMPT = `Eres un instrumentista. La foto muestra un instrumento de aguja (manómetro, termómetro, amperímetro, voltímetro, etc.).
 1) Lee la escala principal (si hay dos, la más grande o la exterior con números más grandes).
 2) Lista TODOS los números impresos de esa escala, cada uno con la posición del centro del número en la imagen, en coordenadas normalizadas de 0 a 1000 (x a la derecha, y hacia abajo).
@@ -93,6 +114,11 @@ export default {
         const kind = P_INSPECT[b.kind] ? b.kind : 'general';
         const result = await visionJSON(env, inspectPrompt(kind), img(b.image), 1200, 0.1);
         return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
+      if (path === '/epp') {
+        const sec = EPP[b.sector] ? b.sector : 'industrial';
+        const result = await visionJSON(env, eppPrompt(sec), img(b.image), 2200, 0.1);
+        return json({ok: true, model: VLM, ms: Date.now() - t0, sector: sec, items: EPP[sec].items, result}, 200, origin);
       }
       if (path === '/gauge') {
         const result = await visionJSON(env, GAUGE_PROMPT, img(b.image), 900, 0.0);

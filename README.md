@@ -23,6 +23,7 @@ GitHub Pages solo sirve archivos estáticos. Para que una página llame a un mod
 |---|---|---|---|
 | `POST /inspect` | [Inspector de terreno](https://github.com/JSNN15/inspector) | Nemotron Super VL | foto + tipo → hallazgos en JSON con caja |
 | `POST /gauge` | [Lector de instrumentos](https://github.com/JSNN15/lector) | Nemotron Super VL | foto → números de la escala con posición |
+| `POST /epp` | [Vigía EPP](https://github.com/JSNN15/vigia) | Nemotron Super VL | foto + sector → EPP de cada persona, riesgo y acción |
 | `POST /turno` | [Planta virtual](https://github.com/JSNN15/planta-virtual) | Nemotron Super (respaldo: Lightning 30B) | estado de la planta + pregunta → respuesta con tags |
 | `POST /embed` | [Consulta RIC](https://github.com/JSNN15/normativa) | Nemotron Embed 1B | texto → vector (256, 512 o 1024) |
 | `POST /ric` | [Consulta RIC](https://github.com/JSNN15/normativa) | Nemotron Super (respaldo: Lightning 30B) | pregunta + 6 extractos → respuesta con citas |
