@@ -1,0 +1,6 @@
+name = "nv-portafolio"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+# La clave NO va aquí. Se guarda como secreto:
+#   npx wrangler secret put NVIDIA_API_KEY
