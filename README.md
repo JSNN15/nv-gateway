@@ -25,8 +25,10 @@ GitHub Pages solo sirve archivos estáticos. Para que una página llame a un mod
 | `POST /gauge` | [Lector de instrumentos](https://github.com/JSNN15/lector) | Nemotron Super VL | foto → números de la escala con posición |
 | `POST /epp` | [Vigía EPP](https://github.com/JSNN15/vigia) | Nemotron Super VL | foto + sector → EPP de cada persona, riesgo y acción |
 | `POST /turno` | [Planta virtual](https://github.com/JSNN15/planta-virtual) | Nemotron Super (respaldo: Lightning 30B) | estado de la planta + pregunta → respuesta con tags |
-| `POST /embed` | [Consulta RIC](https://github.com/JSNN15/normativa) | Nemotron Embed 1B | texto → vector (256, 512 o 1024) |
+| `POST /embed` | [Consulta RIC](https://github.com/JSNN15/normativa), [Supervisor](https://github.com/JSNN15/supervisor) | Nemotron Embed 1B | texto → vector (256, 512 o 1024) |
 | `POST /ric` | [Consulta RIC](https://github.com/JSNN15/normativa) | Nemotron Super (respaldo: Lightning 30B) | pregunta + 6 extractos → respuesta con citas |
+| `POST /supervisa` | [Supervisor normativo](https://github.com/JSNN15/supervisor) | Nemotron Super VL | foto + tipo de inspección → hallazgos con caja y frase de búsqueda |
+| `POST /cita` | [Supervisor normativo](https://github.com/JSNN15/supervisor) | Nemotron Super (respaldo: Lightning 30B) | hallazgos + extractos recuperados → artículo elegido, exigencia y acción |
 
 ## Defensas
 

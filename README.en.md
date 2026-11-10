@@ -25,8 +25,10 @@ GitHub Pages only serves static files. Calling an NVIDIA model from a page needs
 | `POST /gauge` | [Gauge Reader](https://github.com/JSNN15/lector) | Nemotron Super VL | photo → scale numbers with position |
 | `POST /epp` | [Vigía PPE](https://github.com/JSNN15/vigia) | Nemotron Super VL | photo + sector → each person's PPE, risk and action |
 | `POST /turno` | [Virtual plant](https://github.com/JSNN15/planta-virtual) | Nemotron Super (fallback: Lightning 30B) | plant state + question → answer citing tags |
-| `POST /embed` | [RIC Lookup](https://github.com/JSNN15/normativa) | Nemotron Embed 1B | text → vector (256, 512 or 1024) |
+| `POST /embed` | [RIC Lookup](https://github.com/JSNN15/normativa), [Supervisor](https://github.com/JSNN15/supervisor) | Nemotron Embed 1B | text → vector (256, 512 or 1024) |
 | `POST /ric` | [RIC Lookup](https://github.com/JSNN15/normativa) | Nemotron Super (fallback: Lightning 30B) | question + 6 excerpts → cited answer |
+| `POST /supervisa` | [Compliance supervisor](https://github.com/JSNN15/supervisor) | Nemotron Super VL | photo + inspection type → findings with box and search phrase |
+| `POST /cita` | [Compliance supervisor](https://github.com/JSNN15/supervisor) | Nemotron Super (fallback: Lightning 30B) | findings + retrieved excerpts → chosen article, requirement and action |
 
 ## Defenses
 

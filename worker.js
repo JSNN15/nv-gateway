@@ -231,6 +231,41 @@ Criterios: vibración zona B normal; zona C = operación restringida, programar 
 const RIC_SYS = `Eres un asesor en normativa eléctrica chilena (pliegos técnicos RIC de la SEC). Respondes en español de Chile usando SOLO los extractos entregados, numerados [1], [2], etc.
 Primero la respuesta directa en una o dos frases completas (no solo un número), luego los detalles con la cita entre corchetes después de cada afirmación, por ejemplo: "La sección mínima es 2,5 mm² [2]". Cita solo con el número del extracto entre corchetes, nunca con números de sección. Cada afirmación debe llevar su cita [n]; si no puedes citarla, no la escribas. Si el dato preciso que se pregunta no aparece en los extractos, dilo en la primera frase. Si los extractos no alcanzan para responder, dilo claramente y sugiere qué pliego revisar. No inventes números ni artículos. Las tablas vienen extraídas de un PDF y pueden estar desordenadas: si no puedes leer una tabla con certeza, no deduzcas sus valores; di qué tabla del pliego revisar. Máximo 200 palabras. Termina con: "Verifica siempre en el pliego vigente publicado por la SEC."`;
 
+// Supervisor normativo: la visión describe condiciones; las citas se eligen entre extractos recuperados en el navegador
+const SUP = {
+  electrico: {
+    que: 'una instalación eléctrica: tablero, sala eléctrica, canalización o equipo eléctrico',
+    normas: 'los pliegos RIC de la SEC, el DS 594 y el DS 132',
+  },
+  bodega: {
+    que: 'una bodega o zona de almacenamiento de sustancias peligrosas (tambores, estanques, cilindros, productos químicos o combustibles)',
+    normas: 'el DS 43 (almacenamiento de sustancias peligrosas) y el DS 594',
+  },
+  faena: {
+    que: 'un área de trabajo de una faena minera, planta o taller: equipos, correas, máquinas, pasillos y accesos',
+    normas: 'el DS 132 (seguridad minera) y el DS 594',
+  },
+};
+const supPrompt = (
+  t
+) => `Eres supervisor de seguridad y salud en el trabajo en Chile. La foto debería mostrar ${SUP[t].que}.
+Solo describes condiciones visibles; otra etapa buscará los artículos de ${SUP[t].normas}.
+Entrega SOLO un objeto JSON, en español de Chile, con esta forma:
+{"resumen": "una o dos frases sobre el estado general",
+ "corresponde": true,
+ "hallazgos": [{"titulo": "corto", "observacion": "qué se ve, concreto", "severidad": "alta" | "media" | "baja", "caja": [x1, y1, x2, y2], "busqueda": "la exigencia que parece no cumplirse, redactada como la diría un reglamento chileno, sin número de artículo"}],
+ "cumple": ["condiciones visibles que sí están bien"],
+ "no_evaluable": ["lo que la foto no permite verificar y requiere medición, documento o revisión en terreno"]}
+Reglas: máximo 6 hallazgos, 4 en "cumple" y 5 en "no_evaluable". Solo lo observable: no supongas lo que no se ve.
+No cites artículos ni números de norma. No identifiques personas ni opines sobre su estado de ánimo; de una persona solo importa la condición insegura visible (EPP, posición respecto de un equipo o de una zona de peligro).
+Severidad alta = riesgo grave e inmediato para las personas. Cajas en coordenadas normalizadas de 0 a 1000 sobre la imagen (x1,y1 arriba a la izquierda).
+Si la foto no muestra lo pedido: "corresponde": false, "hallazgos": [] y explícalo en el resumen.`;
+const CITA_SYS = `Eres asesor en normativa chilena de seguridad y salud en el trabajo. Recibes los hallazgos de una inspección por foto y, para cada uno, extractos de reglamentos recuperados por un buscador, cada uno con un id.
+Decide qué extractos exigen directamente lo que el hallazgo incumple. Responde SOLO un objeto JSON:
+{"citas": [{"h": número del hallazgo, "ids": ["ids aplicables, máximo 2, el más directo primero"], "exigencia": "qué exige la norma citada, en una frase fiel al extracto", "accion": "acción correctiva concreta", "confianza": "alta" | "media" | "baja"}]}
+Reglas: usa solo ids que aparecen en los extractos de ese mismo hallazgo. Si ninguno lo cubre de forma directa: "ids": [], "exigencia": "Ningún extracto recuperado lo exige de forma directa" y confianza baja.
+No inventes artículos, números, distancias ni valores que no estén en los extractos. Un artículo general (deber general de seguridad, por ejemplo) solo si no hay uno específico, y con confianza baja. Español de Chile, frases breves.`;
+
 export default {
   async fetch(req, env) {
     const origin = req.headers.get('Origin') || '';
@@ -274,12 +309,10 @@ export default {
       }
       if (path === '/turno') {
         const snap = clip(JSON.stringify(b.snapshot || {}), 14000);
-        const hist = (Array.isArray(b.history) ? b.history : [])
-          .slice(-6)
-          .map((m) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: clip(m.content, 1200),
-          }));
+        const hist = (Array.isArray(b.history) ? b.history : []).slice(-6).map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: clip(m.content, 1200),
+        }));
         const msgs = [
           {role: 'system', content: TURNO_SYS},
           ...hist,
@@ -290,6 +323,30 @@ export default {
         ];
         const {model, out} = await smart(env, msgs, 600, 0.2);
         return json({ok: true, model, ms: Date.now() - t0, answer: out}, 200, origin);
+      }
+      if (path === '/supervisa') {
+        const tipo = SUP[b.tipo] ? b.tipo : 'faena';
+        const result = await visionJSON(env, supPrompt(tipo), img(b.image), 1600, 0.1);
+        return json({ok: true, model: VLM, ms: Date.now() - t0, tipo, result}, 200, origin);
+      }
+      if (path === '/cita') {
+        const items = (Array.isArray(b.items) ? b.items : []).slice(0, 6);
+        const txt = items
+          .map(
+            (h, i) =>
+              `Hallazgo ${i + 1}: ${clip(h.titulo, 120)}. ${clip(h.observacion, 400)}\n` +
+              (Array.isArray(h.cands) ? h.cands : [])
+                .slice(0, 5)
+                .map((c) => `  [${clip(c.id, 12)}] ${clip(c.ref, 120)}: ${clip(c.texto, 900)}`)
+                .join('\n')
+          )
+          .join('\n\n');
+        const msgs = [
+          {role: 'system', content: CITA_SYS},
+          {role: 'user', content: `Tipo de inspección: ${clip(b.tipo, 20)}\n\n${txt}`},
+        ];
+        const {model, out} = await smart(env, msgs, 1400, 0.0);
+        return json({ok: true, model, ms: Date.now() - t0, result: parseJSON(out)}, 200, origin);
       }
       if (path === '/embed') {
         const texts = (Array.isArray(b.texts) ? b.texts : [b.text]).slice(0, 4).map((t) => clip(t, 1000));
