@@ -277,6 +277,27 @@ Criterios: vibración zona B normal; zona C = operación restringida, programar 
 const RIC_SYS = `Eres un asesor en normativa eléctrica chilena (pliegos técnicos RIC de la SEC). Respondes en español de Chile usando SOLO los extractos entregados, numerados [1], [2], etc.
 Primero la respuesta directa en una o dos frases completas (no solo un número), luego los detalles con la cita entre corchetes después de cada afirmación, por ejemplo: "La sección mínima es 2,5 mm² [2]". Cita solo con el número del extracto entre corchetes, nunca con números de sección. Cada afirmación debe llevar su cita [n]; si no puedes citarla, no la escribas. Si el dato preciso que se pregunta no aparece en los extractos, dilo en la primera frase. Si los extractos no alcanzan para responder, dilo claramente y sugiere qué pliego revisar. No inventes números ni artículos. Las tablas vienen extraídas de un PDF y pueden estar desordenadas: si no puedes leer una tabla con certeza, no deduzcas sus valores; di qué tabla del pliego revisar. Máximo 200 palabras. Termina con: "Verifica siempre en el pliego vigente publicado por la SEC."`;
 
+// Consulta eléctrica: chat con la norma. Reformula la pregunta con el contexto, y responde solo con los extractos.
+const REF_SCHEMA = S.obj({
+  consulta: S.str,
+  ambito: S.en(['normativa_electrica', 'fuera_de_alcance', 'saludo']),
+});
+const REF_SYS = `Reescribes la última pregunta de una conversación sobre normativa eléctrica chilena (pliegos RIC de la SEC y DS 8/2019) como una consulta de búsqueda autónoma: incluye el tema de las preguntas anteriores si la nueva depende de ellas ("¿y en un baño?", "¿y si es trifásico?"). Usa términos técnicos del reglamento (por ejemplo "protector diferencial", "sección del conductor", "puesta a tierra de protección"). No agregues temas que no se preguntaron y no menciones "RIC", "SEC" ni "DS 8" en la consulta; solo el tema técnico, corto. ambito: normativa_electrica, saludo, o fuera_de_alcance si no trata de instalaciones eléctricas.`;
+// el orden importa: el modelo escribe primero los puntos con su cita y recién al final decide si faltó respaldo
+const RESP_SCHEMA = S.obj({
+  puntos: S.arr(S.obj({n: S.int, textual: S.str, texto: S.str}), 4),
+  aviso: S.str,
+  sin_respaldo: S.bool,
+  sugerencias: S.arr(S.str, 3),
+});
+const RESP_SYS = `Eres asesor de normativa eléctrica chilena para instaladores y maestros eléctricos. Respondes en español de Chile, directo, como un ingeniero en terreno.
+Usa SOLO los extractos numerados [1], [2]… que recibes. Léelos completos: el dato puede estar en medio de un extracto que trata otro tema, o en una tabla.
+puntos: de 1 a 4. El primero es la respuesta directa, con el dato concreto (valor, sección, distancia, tipo de protección). Los demás, solo si aportan: excepciones, casos o condiciones. Cada punto es una o dos frases, sin títulos ni negritas, y lleva:
+- n: el número del extracto que lo respalda;
+- textual: una copia EXACTA de 8 a 40 palabras seguidas de ese extracto que respalda el punto, sin cambiar ni una letra. Si el dato está en una tabla, copia la fila tal como aparece.
+aviso: vacío, salvo que la respuesta dependa de un dato que falta (tipo de recinto, potencia, tensión) o que los extractos no alcancen; ahí dilo en una frase.
+Si la norma no da un valor único sino una fórmula, una tabla o un criterio, explícalo con su cita: eso es una respuesta. Solo si ningún extracto trata el tema: sin_respaldo=true, puntos vacío, y en aviso di qué pliego revisar. No inventes valores.
+sugerencias: 2 o 3 preguntas de seguimiento cortas, como las haría un maestro.`;
 // Supervisor v2: identificar → confirmar con acercamiento → revisar contra la lista del equipo → verificar de cerca
 const CATS = [
   'medidor_empalme',
@@ -448,6 +469,48 @@ export default {
         const {model, out} = await smart(env, msgs, 600, 0.2);
         return json({ok: true, model, ms: Date.now() - t0, answer: out}, 200, origin);
       }
+      if (path === '/reformula') {
+        const hist = (Array.isArray(b.historial) ? b.historial : [])
+          .slice(-3)
+          .map((h) => `Pregunta: ${clip(h.q, 300)}\nRespuesta: ${clip(h.a, 300)}`)
+          .join('\n');
+        const result = await schemaCall(
+          env,
+          [
+            {role: 'system', content: REF_SYS},
+            {
+              role: 'user',
+              content: `${hist ? `Conversación:\n${hist}\n\n` : ''}Última pregunta: ${clip(b.pregunta, 500)}`,
+            },
+          ],
+          REF_SCHEMA,
+          300
+        );
+        return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
+      if (path === '/responde') {
+        const hist = (Array.isArray(b.historial) ? b.historial : [])
+          .slice(-3)
+          .map((h) => `Pregunta: ${clip(h.q, 300)}\nRespuesta: ${clip(h.a, 500)}`)
+          .join('\n');
+        const ext = (Array.isArray(b.extractos) ? b.extractos : [])
+          .slice(0, 8)
+          .map((x, i) => `[${i + 1}] ${clip(x.ref, 120)}\n${clip(x.texto, 1800)}`)
+          .join('\n\n');
+        const result = await schemaCall(
+          env,
+          [
+            {role: 'system', content: RESP_SYS},
+            {
+              role: 'user',
+              content: `${hist ? `Conversación previa:\n${hist}\n\n` : ''}Extractos:\n${ext}\n\nPregunta: ${clip(b.pregunta, 600)}`,
+            },
+          ],
+          RESP_SCHEMA,
+          1400
+        );
+        return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
       if (path === '/identifica') {
         const msgs = visual(ID_PROMPT, [b.image]);
         let result = await schemaCall(env, msgs, ID_SCHEMA, 900);
@@ -532,13 +595,16 @@ Responde estado: cumple, no_cumple o no_se_ve. no_cumple solo si el acercamiento
       }
       if (path === '/embed') {
         const texts = (Array.isArray(b.texts) ? b.texts : [b.text]).slice(0, 4).map((t) => clip(t, 1000));
-        const d = await nv(env, '/embeddings', {
-          model: EMB,
-          input: texts,
-          input_type: b.type === 'passage' ? 'passage' : 'query',
-          encoding_format: 'float',
-          dimensions: [256, 512, 1024].includes(b.dim) ? b.dim : undefined,
-        });
+        const emb = () =>
+          nv(env, '/embeddings', {
+            model: EMB,
+            input: texts,
+            input_type: b.type === 'passage' ? 'passage' : 'query',
+            encoding_format: 'float',
+            dimensions: [256, 512, 1024].includes(b.dim) ? b.dim : undefined,
+          });
+        // la API de embeddings falla de vez en cuando: un reintento
+        const d = await emb().catch(() => new Promise((r) => setTimeout(r, 800)).then(emb));
         return json(
           {ok: true, model: EMB, ms: Date.now() - t0, vectors: d.data.map((x) => x.embedding)},
           200,

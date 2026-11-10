@@ -34,6 +34,8 @@ GitHub Pages solo sirve archivos estáticos. Para que una página llame a un mod
 | `POST /revisa` | Supervisor normativo | Nemotron Super VL | foto + acercamiento + lista → cumple, no cumple o no se ve por punto |
 | `POST /verifica` | Supervisor normativo | Nemotron Super VL | acercamiento de un punto → estado, sin ver la respuesta anterior |
 | `POST /critica` | Supervisor normativo | Nemotron Super VL | pares hallazgo–artículo → si el artículo lo exige de verdad |
+| `POST /reformula` | [Consulta eléctrica](https://github.com/JSNN15/consulta-electrica) | Nemotron Super | conversación + pregunta → consulta de búsqueda autónoma |
+| `POST /responde` | Consulta eléctrica | Nemotron Super | pregunta + 8 fragmentos → puntos con fragmento y cita textual |
 
 ## Defensas
 

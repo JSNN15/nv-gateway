@@ -34,6 +34,8 @@ GitHub Pages only serves static files. Calling an NVIDIA model from a page needs
 | `POST /revisa` | Compliance supervisor | Nemotron Super VL | photo + close-up + checklist → pass, fail or not visible per item |
 | `POST /verifica` | Compliance supervisor | Nemotron Super VL | close-up of one item → status, blind to the previous answer |
 | `POST /critica` | Compliance supervisor | Nemotron Super VL | finding–article pairs → whether the article truly requires it |
+| `POST /reformula` | [Electrical code chat](https://github.com/JSNN15/consulta-electrica) | Nemotron Super | conversation + question → standalone search query |
+| `POST /responde` | Electrical code chat | Nemotron Super | question + 8 chunks → points with chunk number and verbatim quote |
 
 ## Defenses
 
