@@ -29,6 +29,11 @@ GitHub Pages only serves static files. Calling an NVIDIA model from a page needs
 | `POST /ric` | [RIC Lookup](https://github.com/JSNN15/normativa) | Nemotron Super (fallback: Lightning 30B) | question + 6 excerpts → cited answer |
 | `POST /supervisa` | [Compliance supervisor](https://github.com/JSNN15/supervisor) | Nemotron Super VL | photo + inspection type → findings with box and search phrase |
 | `POST /cita` | [Compliance supervisor](https://github.com/JSNN15/supervisor) | Nemotron Super (fallback: Lightning 30B) | findings + retrieved excerpts → chosen article, requirement and action |
+| `POST /identifica` | [Compliance supervisor](https://github.com/JSNN15/supervisor) | Nemotron Super VL (reasoning when unsure) | photo → equipment, evidence, alternatives, key area |
+| `POST /confirma` | Compliance supervisor | Nemotron Super VL | close-up + features → which are visible |
+| `POST /revisa` | Compliance supervisor | Nemotron Super VL | photo + close-up + checklist → pass, fail or not visible per item |
+| `POST /verifica` | Compliance supervisor | Nemotron Super VL | close-up of one item → status, blind to the previous answer |
+| `POST /critica` | Compliance supervisor | Nemotron Super VL | finding–article pairs → whether the article truly requires it |
 
 ## Defenses
 

@@ -29,6 +29,11 @@ GitHub Pages solo sirve archivos estáticos. Para que una página llame a un mod
 | `POST /ric` | [Consulta RIC](https://github.com/JSNN15/normativa) | Nemotron Super (respaldo: Lightning 30B) | pregunta + 6 extractos → respuesta con citas |
 | `POST /supervisa` | [Supervisor normativo](https://github.com/JSNN15/supervisor) | Nemotron Super VL | foto + tipo de inspección → hallazgos con caja y frase de búsqueda |
 | `POST /cita` | [Supervisor normativo](https://github.com/JSNN15/supervisor) | Nemotron Super (respaldo: Lightning 30B) | hallazgos + extractos recuperados → artículo elegido, exigencia y acción |
+| `POST /identifica` | [Supervisor normativo](https://github.com/JSNN15/supervisor) | Nemotron Super VL (razonamiento si hay duda) | foto → equipo, evidencia, alternativas y zona clave |
+| `POST /confirma` | Supervisor normativo | Nemotron Super VL | acercamiento + rasgos del equipo → cuáles se ven |
+| `POST /revisa` | Supervisor normativo | Nemotron Super VL | foto + acercamiento + lista → cumple, no cumple o no se ve por punto |
+| `POST /verifica` | Supervisor normativo | Nemotron Super VL | acercamiento de un punto → estado, sin ver la respuesta anterior |
+| `POST /critica` | Supervisor normativo | Nemotron Super VL | pares hallazgo–artículo → si el artículo lo exige de verdad |
 
 ## Defensas
 

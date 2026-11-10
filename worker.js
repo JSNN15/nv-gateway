@@ -97,6 +97,52 @@ const visionJSON = async (env, prompt, image, max_tokens, temperature) => {
     return parseJSON(await chat(env, VLM, msgs, max_tokens, 0.2));
   }
 };
+// Respuesta con esquema JSON estricto: el modelo no puede devolver otra forma. El razonamiento se activa solo si se pide.
+const schemaCall = async (env, messages, schema, max_tokens, think = false) => {
+  let err;
+  // un reintento: la API gratuita a veces responde 500 o corta la salida
+  for (let k = 0; k < 2; k++) {
+    try {
+      const d = await nv(env, '/chat/completions', {
+        model: VLM,
+        messages,
+        max_tokens: k ? Math.round(max_tokens * 1.5) : max_tokens,
+        temperature: 0.1,
+        stream: false,
+        chat_template_kwargs: {enable_thinking: think},
+        response_format: {type: 'json_schema', json_schema: {name: 'respuesta', schema, strict: true}},
+      });
+      return parseJSON(d.choices[0].message.content || '');
+    } catch (e) {
+      err = e;
+    }
+  }
+  throw err;
+};
+const visual = (prompt, images) => [
+  {
+    role: 'user',
+    content: [
+      {type: 'text', text: prompt},
+      ...images.map((u) => ({type: 'image_url', image_url: {url: img(u)}})),
+    ],
+  },
+];
+// Constructores de esquema
+const S = {
+  str: {type: 'string'},
+  num: {type: 'number'},
+  int: {type: 'integer'},
+  bool: {type: 'boolean'},
+  en: (values) => ({type: 'string', enum: values}),
+  arr: (items, max = 8) => ({type: 'array', items, maxItems: max}),
+  obj: (properties) => ({
+    type: 'object',
+    properties,
+    required: Object.keys(properties),
+    additionalProperties: false,
+  }),
+};
 const img = (u) => {
   if (typeof u !== 'string' || !/^data:image\/(jpeg|png|webp);base64,/.test(u) || u.length > MAX_IMG)
     throw new Error('imagen inválida o muy grande');
@@ -231,6 +277,84 @@ Criterios: vibración zona B normal; zona C = operación restringida, programar 
 const RIC_SYS = `Eres un asesor en normativa eléctrica chilena (pliegos técnicos RIC de la SEC). Respondes en español de Chile usando SOLO los extractos entregados, numerados [1], [2], etc.
 Primero la respuesta directa en una o dos frases completas (no solo un número), luego los detalles con la cita entre corchetes después de cada afirmación, por ejemplo: "La sección mínima es 2,5 mm² [2]". Cita solo con el número del extracto entre corchetes, nunca con números de sección. Cada afirmación debe llevar su cita [n]; si no puedes citarla, no la escribas. Si el dato preciso que se pregunta no aparece en los extractos, dilo en la primera frase. Si los extractos no alcanzan para responder, dilo claramente y sugiere qué pliego revisar. No inventes números ni artículos. Las tablas vienen extraídas de un PDF y pueden estar desordenadas: si no puedes leer una tabla con certeza, no deduzcas sus valores; di qué tabla del pliego revisar. Máximo 200 palabras. Termina con: "Verifica siempre en el pliego vigente publicado por la SEC."`;
 
+// Supervisor v2: identificar → confirmar con acercamiento → revisar contra la lista del equipo → verificar de cerca
+const CATS = [
+  'medidor_empalme',
+  'tablero',
+  'sala_electrica',
+  'transformador',
+  'canalizacion',
+  'grupo_electrogeno',
+  'bodega_sustancias',
+  'cilindros_gas',
+  'estanque',
+  'correa_transportadora',
+  'maquina',
+  'area_trabajo',
+  'otro',
+];
+const ENTORNOS = ['vivienda', 'comercio_oficina', 'industria', 'faena_minera', 'via_publica', 'no_claro'];
+const ESTADOS = ['cumple', 'no_cumple', 'no_se_ve'];
+const ID_PROMPT = `Eres inspector técnico en Chile. Identifica el equipo o instalación PRINCIPAL de la foto, sin suponer nada de antemano.
+Categorías:
+- medidor_empalme: medidor de energía de la distribuidora y su caja de empalme, individual o en banco de medidores
+- tablero: gabinete con protecciones (automáticos, diferenciales, fusibles) que reparte circuitos
+- sala_electrica: recinto con varios tableros, celdas o CCM
+- transformador, canalizacion (ductos, bandejas, cajas de paso), grupo_electrogeno
+- bodega_sustancias: envases de productos químicos o combustibles almacenados
+- cilindros_gas, estanque
+- correa_transportadora, maquina (partes móviles), area_trabajo (taller, pasillos, zona de operación)
+- otro
+Un medidor de energía no es un tablero aunque esté dentro de una caja. Si un equipo concreto (correa, máquina, tablero, envases) ocupa una parte importante de la foto, elige su categoría y no area_trabajo. Si dudas entre dos categorías, baja la confianza.
+Entrega: categoria; subtipo (corto: individual o concentrado, aéreo o subterráneo, distribución o fuerza, etc.); entorno; descripcion en una frase; evidencia (rasgos visibles que prueban la categoría); alternativas (otras categorías posibles y por qué no); confianza de 0 a 1; caja_clave (zona que mejor muestra el equipo, coordenadas 0 a 1000, x1,y1 arriba a la izquierda). Español de Chile.`;
+const ID_SCHEMA = S.obj({
+  categoria: S.en(CATS),
+  subtipo: S.str,
+  entorno: S.en(ENTORNOS),
+  descripcion: S.str,
+  evidencia: S.arr(S.str),
+  alternativas: S.arr(S.obj({categoria: S.en(CATS), por_que_no: S.str})),
+  confianza: S.num,
+  caja_clave: S.arr(S.num, 4),
+});
+const CONF_SCHEMA = S.obj({
+  rasgos: S.arr(S.obj({i: S.int, visto: S.en(['si', 'no', 'no_claro']), detalle: S.str})),
+});
+const REV_SCHEMA = S.obj({
+  resumen: S.str,
+  puntos: S.arr(S.obj({id: S.str, estado: S.en(ESTADOS), observacion: S.str, caja: S.arr(S.num, 4)}), 14),
+  otros: S.arr(
+    S.obj({
+      titulo: S.str,
+      observacion: S.str,
+      severidad: S.en(['alta', 'media', 'baja']),
+      caja: S.arr(S.num, 4),
+      busqueda: S.str,
+      repite: S.str,
+    }),
+    5
+  ),
+});
+const VER_SCHEMA = S.obj({estado: S.en(ESTADOS), observacion: S.str});
+const CRIT_SCHEMA = S.obj({veredictos: S.arr(S.obj({i: S.int, sostiene: S.bool, motivo: S.str}), 10)});
+const revPrompt = (
+  b,
+  items
+) => `Revisas una foto de: ${clip(b.nombre, 60)} (subtipo: ${clip(b.subtipo, 60) || 'no indicado'}; entorno: ${clip(b.entorno, 30) || 'no claro'}).
+${
+  items.length
+    ? `Para cada punto de la lista responde cumple, no_cumple o no_se_ve.
+En puntos va exactamente una entrada por cada id de la lista, en el mismo orden, sin ids nuevos.
+Reglas: no_cumple solo si la foto muestra el incumplimiento sin lugar a dudas. Si la foto no permite decidir o tienes dudas, no_se_ve: no adivines, y di qué faltaría ver. En observacion di lo que se ve que justifica el estado. caja: zona del punto en coordenadas 0 a 1000, o [] si no aplica.
+Lista:
+${items.map((x) => `${x.id}: ${x.texto}`).join('\n')}
+
+En otros, hasta 3 condiciones inseguras claras que ningún punto de la lista cubre; no repitas lo que ya marcaste en la lista.`
+    : 'No hay lista para este equipo. puntos debe ir vacío: []. Entrega en otros hasta 5 condiciones inseguras claras.'
+}
+Para cada uno de otros: repite (id del punto de la lista que trata lo mismo, o vacío si ninguno), titulo corto, observacion de lo que se ve, severidad (alta = riesgo grave e inmediato para personas), caja y busqueda (la exigencia que se incumple, redactada como en un reglamento chileno, sin número de artículo).
+No identifiques personas ni opines sobre ellas; de una persona solo importa la condición insegura visible. resumen: una o dos frases. Español de Chile.`;
+const CRIT_SYS = `Eres revisor de citas normativas chilenas. Para cada par hallazgo–artículo decide si el texto del artículo exige directamente lo que el hallazgo incumple en ESE equipo. sostiene=false si el artículo trata otro tema, es demasiado general, o rige otra instalación o actividad (por ejemplo, un pliego de recarga de vehículos eléctricos para un empalme domiciliario, o un artículo de minas subterráneas para un taller). Ante la duda, false. motivo: una frase.`;
 // Supervisor normativo: la visión describe condiciones; las citas se eligen entre extractos recuperados en el navegador
 const SUP = {
   electrico: {
@@ -323,6 +447,64 @@ export default {
         ];
         const {model, out} = await smart(env, msgs, 600, 0.2);
         return json({ok: true, model, ms: Date.now() - t0, answer: out}, 200, origin);
+      }
+      if (path === '/identifica') {
+        const msgs = visual(ID_PROMPT, [b.image]);
+        let result = await schemaCall(env, msgs, ID_SCHEMA, 900);
+        let razonado = false;
+        if (!(result.confianza >= 0.8)) {
+          // caso dudoso: segunda pasada con razonamiento
+          result = await schemaCall(env, msgs, ID_SCHEMA, 3500, true);
+          razonado = true;
+        }
+        return json({ok: true, model: VLM, ms: Date.now() - t0, razonado, result}, 200, origin);
+      }
+      if (path === '/confirma') {
+        const rasgos = (Array.isArray(b.rasgos) ? b.rasgos : []).slice(0, 6).map((r) => clip(r, 160));
+        const p = `Esta imagen es un acercamiento de la zona donde debería verse un equipo de tipo «${clip(b.nombre, 60)}». Para cada rasgo numerado indica si se ve (si, no o no_claro) y un detalle breve. Solo lo que se ve; no completes por intuición.
+${rasgos.map((r, i) => `${i + 1}. ${r}`).join('\n')}`;
+        const result = await schemaCall(env, visual(p, [b.image]), CONF_SCHEMA, 700);
+        return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
+      if (path === '/revisa') {
+        const items = (Array.isArray(b.items) ? b.items : [])
+          .slice(0, 14)
+          .map((x) => ({id: clip(x.id, 6), texto: clip(x.texto, 220)}));
+        const imgs = b.zoom ? [b.image, b.zoom] : [b.image];
+        const pr =
+          revPrompt(b, items) +
+          (b.zoom
+            ? '\nLa segunda imagen es un acercamiento del equipo: úsala para los detalles. Las cajas van siempre en coordenadas de la primera imagen.'
+            : '');
+        const result = await schemaCall(env, visual(pr, imgs), REV_SCHEMA, 3600);
+        return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
+      if (path === '/verifica') {
+        // verificación ciega: no recibe la observación anterior, para no arrastrar el sesgo de la primera mirada
+        const p = `Esta imagen es un acercamiento de una zona de: ${clip(b.nombre, 60)}.
+Punto a revisar: «${clip(b.texto, 220)}».
+Responde estado: cumple, no_cumple o no_se_ve. no_cumple solo si el acercamiento muestra el incumplimiento sin lugar a dudas. No cuentes como incumplimiento algo que el punto no menciona (por ejemplo, suciedad cuando el punto pide integridad). Si no se puede decidir, no_se_ve. observacion: lo que se ve. Español de Chile.`;
+        const result = await schemaCall(env, visual(p, [b.image]), VER_SCHEMA, 400);
+        return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
+      if (path === '/critica') {
+        const pares = (Array.isArray(b.pares) ? b.pares : []).slice(0, 8);
+        const txt = pares
+          .map(
+            (x, i) =>
+              `[${i + 1}] Equipo: ${clip(b.equipo, 60)}. Hallazgo: ${clip(x.titulo, 120)}. ${clip(x.observacion, 300)}\nArtículo ${clip(x.ref, 80)}: ${clip(x.texto, 900)}`
+          )
+          .join('\n\n');
+        const result = await schemaCall(
+          env,
+          [
+            {role: 'system', content: CRIT_SYS},
+            {role: 'user', content: txt},
+          ],
+          CRIT_SCHEMA,
+          900
+        );
+        return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
       }
       if (path === '/supervisa') {
         const tipo = SUP[b.tipo] ? b.tipo : 'faena';
