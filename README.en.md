@@ -19,23 +19,24 @@ GitHub Pages only serves static files. Calling an NVIDIA model from a page needs
 
 ## Routes
 
-| Route | Used by | Model | Input → output |
-|---|---|---|---|
-| `POST /inspect` | [Field Inspector](https://github.com/JSNN15/inspector) | Nemotron Super VL | photo + kind → JSON findings with boxes |
-| `POST /gauge` | [Gauge Reader](https://github.com/JSNN15/lector) | Nemotron Super VL | photo → scale numbers with position |
-| `POST /epp` | [Vigía PPE](https://github.com/JSNN15/vigia) | Nemotron Super VL | photo + sector → each person's PPE, risk and action |
-| `POST /turno` | [Virtual plant](https://github.com/JSNN15/planta-virtual) | Nemotron Super (fallback: Lightning 30B) | plant state + question → answer citing tags |
-| `POST /embed` | [RIC Lookup](https://github.com/JSNN15/normativa), [Supervisor](https://github.com/JSNN15/supervisor) | Nemotron Embed 1B | text → vector (256, 512 or 1024) |
-| `POST /ric` | [RIC Lookup](https://github.com/JSNN15/normativa) | Nemotron Super (fallback: Lightning 30B) | question + 6 excerpts → cited answer |
-| `POST /supervisa` | [Compliance supervisor](https://github.com/JSNN15/supervisor) | Nemotron Super VL | photo + inspection type → findings with box and search phrase |
-| `POST /cita` | [Compliance supervisor](https://github.com/JSNN15/supervisor) | Nemotron Super (fallback: Lightning 30B) | findings + retrieved excerpts → chosen article, requirement and action |
-| `POST /identifica` | [Compliance supervisor](https://github.com/JSNN15/supervisor) | Nemotron Super VL (reasoning when unsure) | photo → equipment, evidence, alternatives, key area |
-| `POST /confirma` | Compliance supervisor | Nemotron Super VL | close-up + features → which are visible |
-| `POST /revisa` | Compliance supervisor | Nemotron Super VL | photo + close-up + checklist → pass, fail or not visible per item |
-| `POST /verifica` | Compliance supervisor | Nemotron Super VL | close-up of one item → status, blind to the previous answer |
-| `POST /critica` | Compliance supervisor | Nemotron Super VL | finding–article pairs → whether the article truly requires it |
-| `POST /reformula` | [Electrical code chat](https://github.com/JSNN15/consulta-electrica) | Nemotron Super | conversation + question → standalone search query |
-| `POST /responde` | Electrical code chat | Nemotron Super | question + 8 chunks → points with chunk number and verbatim quote |
+| Route              | Used by                                                                                               | Model                                                                                                         | Input → output                                                                                                               |
+| ------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `POST /inspect`    | [Field Inspector](https://github.com/JSNN15/inspector)                                                | Nemotron Super VL                                                                                             | photo + kind → JSON findings with boxes                                                                                      |
+| `POST /gauge`      | [Gauge Reader](https://github.com/JSNN15/lector)                                                      | Nemotron Super VL                                                                                             | photo → scale numbers with position                                                                                          |
+| `POST /epp`        | [Vigía PPE](https://github.com/JSNN15/vigia)                                                          | Nemotron Super VL                                                                                             | photo + sector → each person's PPE, risk and action                                                                          |
+| `POST /planta`     | [Virtual plant](https://github.com/JSNN15/planta-virtual)                                             | `entender`: Nemotron Lightning 30B (fallback: Super) · `diagnosticar`: Nemotron Super with strict JSON schema | question + plant snapshot + tool results + manual excerpts + action catalog → structured diagnosis that the browser verifies |
+| `POST /turno`      | [Virtual plant](https://github.com/JSNN15/planta-virtual)                                             | Nemotron Super (fallback: Lightning 30B)                                                                      | plant state + question → answer citing tags                                                                                  |
+| `POST /embed`      | [RIC Lookup](https://github.com/JSNN15/normativa), [Supervisor](https://github.com/JSNN15/supervisor) | Nemotron Embed 1B                                                                                             | text → vector (256, 512 or 1024)                                                                                             |
+| `POST /ric`        | [RIC Lookup](https://github.com/JSNN15/normativa)                                                     | Nemotron Super (fallback: Lightning 30B)                                                                      | question + 6 excerpts → cited answer                                                                                         |
+| `POST /supervisa`  | [Compliance supervisor](https://github.com/JSNN15/supervisor)                                         | Nemotron Super VL                                                                                             | photo + inspection type → findings with box and search phrase                                                                |
+| `POST /cita`       | [Compliance supervisor](https://github.com/JSNN15/supervisor)                                         | Nemotron Super (fallback: Lightning 30B)                                                                      | findings + retrieved excerpts → chosen article, requirement and action                                                       |
+| `POST /identifica` | [Compliance supervisor](https://github.com/JSNN15/supervisor)                                         | Nemotron Super VL (reasoning when unsure)                                                                     | photo → equipment, evidence, alternatives, key area                                                                          |
+| `POST /confirma`   | Compliance supervisor                                                                                 | Nemotron Super VL                                                                                             | close-up + features → which are visible                                                                                      |
+| `POST /revisa`     | Compliance supervisor                                                                                 | Nemotron Super VL                                                                                             | photo + close-up + checklist → pass, fail or not visible per item                                                            |
+| `POST /verifica`   | Compliance supervisor                                                                                 | Nemotron Super VL                                                                                             | close-up of one item → status, blind to the previous answer                                                                  |
+| `POST /critica`    | Compliance supervisor                                                                                 | Nemotron Super VL                                                                                             | finding–article pairs → whether the article truly requires it                                                                |
+| `POST /reformula`  | [Electrical code chat](https://github.com/JSNN15/consulta-electrica)                                  | Nemotron Super                                                                                                | conversation + question → standalone search query                                                                            |
+| `POST /responde`   | Electrical code chat                                                                                  | Nemotron Super                                                                                                | question + 8 chunks → points with chunk number and verbatim quote                                                            |
 
 ## Defenses
 
@@ -58,7 +59,7 @@ flowchart TD
 ```
 
 - **Origin:** only `https://jsnn15.github.io` (plus `localhost` for development). Other sites get 403 in the browser.
-- **Rate limit:** 12 requests per minute per IP and route (30 for `/embed`), on top of NVIDIA's own API limit.
+- **Rate limit:** 12 requests per minute per IP and route (30 for `/embed` and 24 for `/planta`, which makes two calls per question), on top of NVIDIA's own API limit.
 - **Bounded input:** images must be JPEG, PNG or WebP data URLs up to 1.6 MB; texts are clipped before reaching the model.
 - **Robust output:** trailing commas in a vision model's JSON are repaired; otherwise it retries once.
 - **Fallback:** text answers use the large model, which sticks closer to the data; if it fails or takes over 25 s, the fast model answers.
@@ -80,11 +81,11 @@ NVIDIA_API_KEY=nvapi-... node dev.mjs    # listens on :8787
 
 ## Files
 
-| File | What it is |
-|---|---|
-| `worker.js` | The whole Worker: routes, prompts, defenses and fallback. |
-| `dev.mjs` | Local server wrapping `worker.fetch` for development. |
-| `wrangler.toml` | Deploy config (no key). |
+| File            | What it is                                                |
+| --------------- | --------------------------------------------------------- |
+| `worker.js`     | The whole Worker: routes, prompts, defenses and fallback. |
+| `dev.mjs`       | Local server wrapping `worker.fetch` for development.     |
+| `wrangler.toml` | Deploy config (no key).                                   |
 
 ---
 

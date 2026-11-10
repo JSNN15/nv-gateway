@@ -98,13 +98,13 @@ const visionJSON = async (env, prompt, image, max_tokens, temperature) => {
   }
 };
 // Respuesta con esquema JSON estricto: el modelo no puede devolver otra forma. El razonamiento se activa solo si se pide.
-const schemaCall = async (env, messages, schema, max_tokens, think = false) => {
+const schemaCall = async (env, messages, schema, max_tokens, think = false, model = VLM) => {
   let err;
   // un reintento: la API gratuita a veces responde 500 o corta la salida
   for (let k = 0; k < 2; k++) {
     try {
       const d = await nv(env, '/chat/completions', {
-        model: VLM,
+        model,
         messages,
         max_tokens: k ? Math.round(max_tokens * 1.5) : max_tokens,
         temperature: 0.1,
@@ -268,12 +268,12 @@ Entrega SOLO un objeto JSON en español:
  "numeros": [{"v": número, "x": 0-1000, "y": 0-1000}],
  "valor_estimado": número o null, "confianza": "alta" | "media" | "baja", "problemas": "reflejos, ángulo, escala doble, etc., o vacío"}
 Si no es un instrumento de aguja, numeros vacío y explícalo en problemas.`;
-const TURNO_SYS = `Eres el asistente del jefe de turno en la sala de control de una planta de cobre LX-SX-EW (lixiviación en pilas, extracción por solventes y electroobtención). Recibes una foto instantánea del estado de la planta en JSON: alarmas activas con prioridad ISA-18.2, tags fuera de banda, tags clave, lazos PID, motores con novedad (vibración con su zona ISO 10816-3), rectificador, KPI del turno y la bitácora reciente (ahí aparece la falla simulada, si hay una).
+const TURNO_SYS = `Eres el asistente del jefe de turno en la sala de control de una planta de cobre LX-SX-EW (lixiviación en pilas, extracción por solventes y electroobtención). Recibes una foto instantánea del estado de la planta en JSON: alarmas activas con prioridad ISA-18.2, tags fuera de banda, tags clave, lazos PID, motores con novedad (vibración con su zona ISO 20816-3), rectificador, KPI del turno y la bitácora reciente (ahí aparece la falla simulada, si hay una).
 Responde en español de Chile, breve y operativo:
 1) La respuesta directa en una o dos frases.
 2) Evidencia: solo los datos relevantes a la pregunta, citando tags con su valor (por ejemplo "VIT-M-103 = 5,1 mm/s, zona C"). No mezcles alarmas que no tienen relación.
 3) Qué hace el operador ahora y qué hace mantenimiento.
-Criterios: vibración zona B normal; zona C = operación restringida, programar la intervención en las próximas horas y vigilar la tendencia, sin detener de inmediato salvo que suba rápido; zona D = riesgo de daño, detener en forma controlada. Prioridad urgente o alta = actuar ya. Los cortocircuitos en celdas de EW se corrigen en operación (el operador de nave separa o retira el cátodo con herramienta aislada), no esperan una parada. Usa coma decimal. Usa solo los datos entregados; si algo no está en los datos, dilo. No inventes tags ni valores. Máximo 170 palabras, con viñetas cortas.`;
+Criterios: vibración zona B normal; zona C = operación restringida, programar la intervención en las próximas horas y vigilar la tendencia, sin detener de inmediato salvo que suba rápido; zona D = riesgo de daño, detener en forma controlada. Prioridad alta = actuar ya; media = actuar en el turno; baja = programar. Los cortocircuitos en celdas de EW se corrigen en operación (el operador de nave separa o retira el cátodo con herramienta aislada), no esperan una parada. Usa coma decimal. Usa solo los datos entregados; si algo no está en los datos, dilo. No inventes tags ni valores. Máximo 170 palabras, con viñetas cortas.`;
 const RIC_SYS = `Eres un asesor en normativa eléctrica chilena (pliegos técnicos RIC de la SEC). Respondes en español de Chile usando SOLO los extractos entregados, numerados [1], [2], etc.
 Primero la respuesta directa en una o dos frases completas (no solo un número), luego los detalles con la cita entre corchetes después de cada afirmación, por ejemplo: "La sección mínima es 2,5 mm² [2]". Cita solo con el número del extracto entre corchetes, nunca con números de sección. Cada afirmación debe llevar su cita [n]; si no puedes citarla, no la escribas. Si el dato preciso que se pregunta no aparece en los extractos, dilo en la primera frase. Si los extractos no alcanzan para responder, dilo claramente y sugiere qué pliego revisar. No inventes números ni artículos. Las tablas vienen extraídas de un PDF y pueden estar desordenadas: si no puedes leer una tabla con certeza, no deduzcas sus valores; di qué tabla del pliego revisar. Máximo 200 palabras. Termina con: "Verifica siempre en el pliego vigente publicado por la SEC."`;
 
@@ -411,6 +411,54 @@ Decide qué extractos exigen directamente lo que el hallazgo incumple. Responde 
 Reglas: usa solo ids que aparecen en los extractos de ese mismo hallazgo. Si ninguno lo cubre de forma directa: "ids": [], "exigencia": "Ningún extracto recuperado lo exige de forma directa" y confianza baja.
 No inventes artículos, números, distancias ni valores que no estén en los extractos. Un artículo general (deber general de seguridad, por ejemplo) solo si no hay uno específico, y con confianza baja. Español de Chile, frases breves.`;
 
+// Planta virtual: pipeline del asistente de IA industrial. El navegador orquesta las etapas, consulta la planta con
+// herramientas de solo lectura y verifica la respuesta contra el estado real; aquí solo se razona con esquema estricto.
+// entender: intención, objetos de la planta y herramientas a consultar (modelo rápido).
+// diagnosticar: causa, evidencia citada, acciones del catálogo y pasos del manual (modelo grande).
+const HERR_PLANTA = [
+  'estado_planta',
+  'tag',
+  'tendencia',
+  'alarma',
+  'equipo',
+  'lazo',
+  'secuencia',
+  'manual',
+  'reglas',
+];
+const ENT_SCHEMA = S.obj({
+  intencion: S.en(['estado', 'diagnostico', 'accion', 'ensename', 'kpi', 'fuera_de_alcance']),
+  objetos: S.arr(S.str, 6),
+  herramientas: S.arr(S.obj({nombre: S.en(HERR_PLANTA), arg: S.str}), 6),
+  busqueda_manual: S.str,
+});
+const ENT_SYS = `Eres la primera etapa del asistente de una planta de cobre LX-SX-EW. No respondes la pregunta: decides qué hay que consultar para responderla.
+intencion: estado (cómo está algo), diagnostico (por qué pasa algo, causa de una alarma o falla), accion (pide hacer algo en la planta), ensename (cómo se hace un procedimiento), kpi (producción, costo, energía, plan), fuera_de_alcance (no trata de la planta).
+objetos: tags, equipos o lazos nombrados o implícitos, con su código exacto de la lista entregada (por ejemplo "M-103", "AIT-405", "FIC-201"). No inventes códigos.
+herramientas: de 1 a 6 consultas de solo lectura. Siempre incluye estado_planta con arg vacío. tag, tendencia, alarma, equipo y lazo reciben un código; secuencia recibe "100" o "400"; manual recibe una búsqueda corta; reglas recibe un área ("100" a "500") o vacío.
+busqueda_manual: la búsqueda en los manuales de operación y mantenimiento que ayudaría a responder, con términos técnicos, o vacío.`;
+const DIAG_SCHEMA = S.obj({
+  resumen: S.str,
+  confianza: S.en(['alta', 'media', 'baja']),
+  causa_probable: S.str,
+  evidencia: S.arr(S.obj({tag: S.str, valor: S.num, comentario: S.str}), 6),
+  acciones: S.arr(S.obj({id: S.str, objetivo: S.str, valor: S.str, por_que: S.str}), 3),
+  pasos_manuales: S.arr(S.obj({paso: S.str, manual: S.str}), 6),
+  para_cada_rol: S.obj({operacion: S.str, mantenimiento: S.str, jefe_turno: S.str}),
+  no_se: S.str,
+});
+const DIAG_SYS = `Eres el asistente de IA industrial del jefe de turno de una planta de cobre LX-SX-EW (lixiviación en pilas, extracción por solventes y electroobtención). Recibes la pregunta, la foto del estado de la planta, los resultados de las herramientas que se consultaron, extractos de los manuales con su código de sección, el catálogo de acciones permitidas y las reglas duras.
+Responde en español de Chile, breve y operativo, solo con lo entregado:
+- resumen: la respuesta directa en dos o tres frases.
+- causa_probable: la causa más probable con su mecanismo físico o químico, o vacío si la pregunta no es de diagnóstico.
+- evidencia: de 1 a 6 tags con el valor EXACTO que aparece en los datos. Nunca un tag que no esté en los datos.
+- acciones: de 0 a 3, SOLO con ids del catálogo. objetivo: el equipo o lazo exacto si la acción lo pide, o vacío. valor: solo para consigna_lazo, como número en texto, dentro de la banda normal y a no más de 10 % del rango del valor actual; si no, vacío. Ninguna acción se ejecuta sola: una persona la aprueba. No propongas rearmar un equipo disparado por una protección (vibración, temperatura, sobrecorriente, sobrecarga): eso lo decide mantenimiento.
+- pasos_manuales: los pasos que la persona hace en terreno o en la HMI, con el código de sección del manual de donde salen (por ejemplo "OP-4.3"), o vacío si no viene de un extracto.
+- para_cada_rol: una frase para operación, mantenimiento y jefe de turno.
+- no_se: lo que los datos no permiten afirmar o lo que hay que verificar en terreno. Nunca vacío.
+Criterios: prioridad alta = actuar ya; media = en el turno; baja = programar. Vibración ISO 20816-3: zona C = operación restringida y programar la intervención; zona D = detener en forma controlada. Los cortocircuitos de celda se corrigen en operación. Usa coma decimal en el texto. Si la respuesta anterior tuvo errores de verificación, corrígelos todos.`;
+const okId = (s) => /^[a-z0-9_]{3,40}$/.test(s);
+
 export default {
   async fetch(req, env) {
     const origin = req.headers.get('Origin') || '';
@@ -424,7 +472,7 @@ export default {
     if (!ok) return json({error: 'origen no permitido'}, 403, ORIGINS[0]);
     const ip = req.headers.get('CF-Connecting-IP') || 'local';
     const path = new URL(req.url).pathname;
-    if (limited(ip + path, path === '/embed' ? 30 : 12))
+    if (limited(ip + path, path === '/embed' ? 30 : path === '/planta' ? 24 : 12))
       return json({error: 'Demasiadas consultas seguidas. Espera un minuto.'}, 429, origin);
     let b;
     try {
@@ -451,6 +499,73 @@ export default {
       if (path === '/gauge') {
         const result = await visionJSON(env, GAUGE_PROMPT, img(b.image), 900, 0.0);
         return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
+      if (path === '/planta') {
+        const hist = (Array.isArray(b.historial) ? b.historial : []).slice(-4).map((m) => ({
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: clip(m.content, 900),
+        }));
+        if (b.etapa === 'entender') {
+          const objs = (Array.isArray(b.objetos) ? b.objetos : []).slice(0, 220).map((x) => clip(x, 14));
+          const msgs = [
+            {role: 'system', content: ENT_SYS},
+            ...hist,
+            {
+              role: 'user',
+              content: `Códigos de la planta: ${objs.join(', ')}\n\nPregunta: ${clip(b.pregunta, 600)}`,
+            },
+          ];
+          let result,
+            model = LLM;
+          try {
+            result = await schemaCall(env, msgs, ENT_SCHEMA, 400, false, LLM);
+          } catch {
+            model = VLM;
+            result = await schemaCall(env, msgs, ENT_SCHEMA, 400);
+          }
+          return json({ok: true, etapa: 'entender', model, ms: Date.now() - t0, result}, 200, origin);
+        }
+        if (b.etapa === 'diagnosticar') {
+          const cat = (Array.isArray(b.catalogo) ? b.catalogo : [])
+            .filter((a) => a && okId(a.id))
+            .slice(0, 40);
+          const errores = (Array.isArray(b.errores) ? b.errores : []).slice(0, 8).map((e) => clip(e, 240));
+          const msgs = [
+            {role: 'system', content: DIAG_SYS},
+            ...hist,
+            {
+              role: 'user',
+              content: [
+                `Pregunta: ${clip(b.pregunta, 600)}`,
+                `Foto del estado de la planta:\n${clip(JSON.stringify(b.foto || {}), 9000)}`,
+                `Resultados de las herramientas:\n${clip(JSON.stringify(b.consultas || []), 6000)}`,
+                `Extractos de los manuales:\n${
+                  (Array.isArray(b.manual) ? b.manual : [])
+                    .slice(0, 4)
+                    .map((x) => `[${clip(x.id, 12)}] ${clip(x.titulo, 80)}\n${clip(x.extracto, 900)}`)
+                    .join('\n\n') || '(ninguno)'
+                }`,
+                `Catálogo de acciones permitidas:\n${clip(JSON.stringify(cat), 4000)}`,
+                `Reglas duras:\n${(Array.isArray(b.reglas) ? b.reglas : [])
+                  .slice(0, 12)
+                  .map((x) => clip(x, 200))
+                  .join('\n')}`,
+                errores.length
+                  ? `Tu respuesta anterior no pasó la verificación:\n${errores.join('\n')}\nCorrígela.`
+                  : '',
+              ]
+                .filter(Boolean)
+                .join('\n\n'),
+            },
+          ];
+          const result = await schemaCall(env, msgs, DIAG_SCHEMA, 1400, !!b.pensar);
+          return json(
+            {ok: true, etapa: 'diagnosticar', model: VLM, ms: Date.now() - t0, result},
+            200,
+            origin
+          );
+        }
+        return json({error: 'etapa desconocida'}, 400, origin);
       }
       if (path === '/turno') {
         const snap = clip(JSON.stringify(b.snapshot || {}), 14000);
