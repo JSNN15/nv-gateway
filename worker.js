@@ -6,52 +6,113 @@ const BASE = 'https://integrate.api.nvidia.com/v1';
 const VLM = 'nvidia/nemotron-3.5-super-vl-120b-a12b';
 const LLM = 'nvidia/nemotron-3.5-lightning-30b-a3b';
 const EMB = 'nvidia/nemotron-3.5-embed-1b';
-const MAX_IMG = 1_600_000;           // largo máximo del dataURL (≈1,2 MB de JPEG)
-const hits = new Map();              // límite por IP (por instancia; NVIDIA limita además a 40/min)
+const MAX_IMG = 1_600_000; // largo máximo del dataURL (≈1,2 MB de JPEG)
+const hits = new Map(); // límite por IP (por instancia; NVIDIA limita además a 40/min)
 
-const json = (obj, status, origin) => new Response(JSON.stringify(obj), {status, headers: {'Content-Type': 'application/json; charset=utf-8', ...cors(origin)}});
-const cors = (origin) => ({'Access-Control-Allow-Origin': origin || ORIGINS[0], 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '86400', 'Vary': 'Origin'});
-const limited = (key, per = 12) => { const now = Date.now(), w = (hits.get(key) || []).filter((t) => now - t < 60_000); w.push(now); hits.set(key, w); if (hits.size > 5000) hits.clear(); return w.length > per; };
+const json = (obj, status, origin) =>
+  new Response(JSON.stringify(obj), {
+    status,
+    headers: {'Content-Type': 'application/json; charset=utf-8', ...cors(origin)},
+  });
+const cors = (origin) => ({
+  'Access-Control-Allow-Origin': origin || ORIGINS[0],
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Max-Age': '86400',
+  Vary: 'Origin',
+});
+const limited = (key, per = 12) => {
+  const now = Date.now(),
+    w = (hits.get(key) || []).filter((t) => now - t < 60_000);
+  w.push(now);
+  hits.set(key, w);
+  if (hits.size > 5000) hits.clear();
+  return w.length > per;
+};
 
 async function nv(env, path, body) {
-  const r = await fetch(BASE + path, {method: 'POST', headers: {'Authorization': 'Bearer ' + env.NVIDIA_API_KEY, 'Content-Type': 'application/json', 'Accept': 'application/json'}, body: JSON.stringify(body)});
-  if (!r.ok) { const t = await r.text(); throw new Error(`nvidia ${r.status}: ${t.slice(0, 160)}`); }
+  const r = await fetch(BASE + path, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + env.NVIDIA_API_KEY,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`nvidia ${r.status}: ${t.slice(0, 160)}`);
+  }
   return r.json();
 }
 const chat = async (env, model, messages, max_tokens = 900, temperature = 0.2) => {
-  const d = await nv(env, '/chat/completions', {model, messages, max_tokens, temperature, stream: false, chat_template_kwargs: {enable_thinking: false}});
+  const d = await nv(env, '/chat/completions', {
+    model,
+    messages,
+    max_tokens,
+    temperature,
+    stream: false,
+    chat_template_kwargs: {enable_thinking: false},
+  });
   return d.choices[0].message.content || '';
 };
 // Texto: el modelo grande se apega mejor a los datos; si falla o tarda más de 25 s, responde el rápido
 const smart = async (env, messages, max_tokens, temperature) => {
   try {
-    const out = await Promise.race([chat(env, VLM, messages, max_tokens, temperature), new Promise((_, rej) => setTimeout(() => rej(new Error('lento')), 25000))]);
+    const out = await Promise.race([
+      chat(env, VLM, messages, max_tokens, temperature),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('lento')), 25000)),
+    ]);
     if (out.trim()) return {model: VLM, out};
   } catch {}
   return {model: LLM, out: await chat(env, LLM, messages, max_tokens, temperature)};
 };
 // Extrae el primer objeto JSON de la respuesta del modelo
 const parseJSON = (s) => {
-  const a = s.indexOf('{'), b = s.lastIndexOf('}'); if (a < 0 || b < a) throw new Error('respuesta sin JSON');
+  const a = s.indexOf('{'),
+    b = s.lastIndexOf('}');
+  if (a < 0 || b < a) throw new Error('respuesta sin JSON');
   const t = s.slice(a, b + 1);
-  try { return JSON.parse(t); } catch { return JSON.parse(t.replace(/,\s*([}\]])/g, '$1').replace(/[\u0000-\u001f]+/g, ' ')); }
+  try {
+    return JSON.parse(t);
+  } catch {
+    return JSON.parse(t.replace(/,\s*([}\]])/g, '$1').replace(/[\u0000-\u001f]+/g, ' '));
+  }
 };
 // Llama al modelo de visión y, si la respuesta no trae un JSON válido, reintenta una vez
 const visionJSON = async (env, prompt, image, max_tokens, temperature) => {
-  const msgs = [{role: 'user', content: [{type: 'text', text: prompt}, {type: 'image_url', image_url: {url: image}}]}];
-  try { return parseJSON(await chat(env, VLM, msgs, max_tokens, temperature)); }
-  catch { return parseJSON(await chat(env, VLM, msgs, max_tokens, 0.2)); }
+  const msgs = [
+    {
+      role: 'user',
+      content: [
+        {type: 'text', text: prompt},
+        {type: 'image_url', image_url: {url: image}},
+      ],
+    },
+  ];
+  try {
+    return parseJSON(await chat(env, VLM, msgs, max_tokens, temperature));
+  } catch {
+    return parseJSON(await chat(env, VLM, msgs, max_tokens, 0.2));
+  }
 };
-const img = (u) => { if (typeof u !== 'string' || !/^data:image\/(jpeg|png|webp);base64,/.test(u) || u.length > MAX_IMG) throw new Error('imagen inválida o muy grande'); return u; };
+const img = (u) => {
+  if (typeof u !== 'string' || !/^data:image\/(jpeg|png|webp);base64,/.test(u) || u.length > MAX_IMG)
+    throw new Error('imagen inválida o muy grande');
+  return u;
+};
 const clip = (s, n) => String(s || '').slice(0, n);
 
 const P_INSPECT = {
   tablero: 'un tablero o gabinete eléctrico',
   correa: 'una correa transportadora y sus polines, tambores y estructura',
   equipo: 'un equipo industrial (motor, bomba, reductor, cañería, válvula o estructura)',
-  general: 'una instalación industrial o de faena'
+  general: 'una instalación industrial o de faena',
 };
-const inspectPrompt = (kind) => `Eres un inspector senior de mantenimiento y seguridad en minería e industria. La foto muestra ${P_INSPECT[kind] || P_INSPECT.general}.
+const inspectPrompt = (
+  kind
+) => `Eres un inspector senior de mantenimiento y seguridad en minería e industria. La foto muestra ${P_INSPECT[kind] || P_INSPECT.general}.
 Revisa la foto y entrega SOLO un objeto JSON, en español de Chile, con esta forma:
 {"resumen": "una o dos frases sobre el estado general",
  "estado": "bueno" | "observaciones" | "critico",
@@ -60,15 +121,87 @@ Revisa la foto y entrega SOLO un objeto JSON, en español de Chile, con esta for
 Reglas: caja en coordenadas normalizadas de 0 a 1000 sobre la imagen (x1,y1 arriba a la izquierda). Máximo 6 hallazgos, ordenados por severidad. Describe solo lo que se ve; si algo es dudoso dilo en el detalle. Si la foto no es de una instalación industrial, devuelve hallazgos vacíos y explícalo en el resumen.`;
 // EPP por sector: la lista vive en el servidor; la página solo elige el sector.
 const EPP = {
-  construccion: {n: 'construcción', items: [['casco', 'casco de seguridad'], ['chaleco', 'chaleco o ropa reflectante'], ['calzado', 'calzado de seguridad'], ['guantes', 'guantes de trabajo'], ['lentes', 'lentes de seguridad'], ['arnes', 'arnés con línea de vida (solo si trabaja a más de 1,8 m o en borde abierto)']]},
-  mineria: {n: 'minería (rajo o subterránea)', items: [['casco', 'casco de seguridad (con lámpara en subterránea)'], ['chaleco', 'chaleco o ropa reflectante'], ['calzado', 'calzado de seguridad'], ['lentes', 'lentes de seguridad'], ['guantes', 'guantes de trabajo'], ['auditiva', 'protección auditiva (si hay equipos ruidosos)'], ['respirador', 'respirador (si hay polvo o gases)']]},
-  electrico: {n: 'trabajos eléctricos', items: [['casco', 'casco dieléctrico'], ['guantes', 'guantes dieléctricos o de cuero según tarea'], ['careta', 'lentes o careta facial contra arco'], ['ropa', 'ropa ignífuga de manga larga'], ['calzado', 'calzado dieléctrico'], ['arnes', 'arnés (solo si trabaja en altura o en poste)']]},
-  soldadura: {n: 'soldadura y metalmecánica', items: [['careta', 'careta de soldar o protector facial'], ['lentes', 'lentes de seguridad'], ['guantes', 'guantes de cuero'], ['ropa', 'ropa ignífuga, coleto o delantal de cuero'], ['calzado', 'calzado de seguridad'], ['auditiva', 'protección auditiva (si esmerila o corta)']]},
-  alimentos: {n: 'industria de alimentos', items: [['cofia', 'cofia o gorro que cubra el pelo'], ['mascarilla', 'mascarilla'], ['guantes', 'guantes'], ['ropa', 'ropa de trabajo limpia o delantal'], ['calzado', 'botas o calzado de seguridad']]},
-  agro: {n: 'agrícola', items: [['guantes', 'guantes'], ['respirador', 'respirador o mascarilla (si aplica agroquímicos)'], ['lentes', 'lentes (si aplica agroquímicos)'], ['ropa', 'ropa de manga larga'], ['calzado', 'botas o calzado cerrado'], ['sombrero', 'protección solar (sombrero o legionario)']]},
-  industrial: {n: 'planta industrial general', items: [['casco', 'casco de seguridad'], ['lentes', 'lentes de seguridad'], ['guantes', 'guantes de trabajo'], ['calzado', 'calzado de seguridad'], ['chaleco', 'chaleco o ropa reflectante'], ['auditiva', 'protección auditiva (si hay ruido)']]}
+  construccion: {
+    n: 'construcción',
+    items: [
+      ['casco', 'casco de seguridad'],
+      ['chaleco', 'chaleco o ropa reflectante'],
+      ['calzado', 'calzado de seguridad'],
+      ['guantes', 'guantes de trabajo'],
+      ['lentes', 'lentes de seguridad'],
+      ['arnes', 'arnés con línea de vida (solo si trabaja a más de 1,8 m o en borde abierto)'],
+    ],
+  },
+  mineria: {
+    n: 'minería (rajo o subterránea)',
+    items: [
+      ['casco', 'casco de seguridad (con lámpara en subterránea)'],
+      ['chaleco', 'chaleco o ropa reflectante'],
+      ['calzado', 'calzado de seguridad'],
+      ['lentes', 'lentes de seguridad'],
+      ['guantes', 'guantes de trabajo'],
+      ['auditiva', 'protección auditiva (si hay equipos ruidosos)'],
+      ['respirador', 'respirador (si hay polvo o gases)'],
+    ],
+  },
+  electrico: {
+    n: 'trabajos eléctricos',
+    items: [
+      ['casco', 'casco dieléctrico'],
+      ['guantes', 'guantes dieléctricos o de cuero según tarea'],
+      ['careta', 'lentes o careta facial contra arco'],
+      ['ropa', 'ropa ignífuga de manga larga'],
+      ['calzado', 'calzado dieléctrico'],
+      ['arnes', 'arnés (solo si trabaja en altura o en poste)'],
+    ],
+  },
+  soldadura: {
+    n: 'soldadura y metalmecánica',
+    items: [
+      ['careta', 'careta de soldar o protector facial'],
+      ['lentes', 'lentes de seguridad'],
+      ['guantes', 'guantes de cuero'],
+      ['ropa', 'ropa ignífuga, coleto o delantal de cuero'],
+      ['calzado', 'calzado de seguridad'],
+      ['auditiva', 'protección auditiva (si esmerila o corta)'],
+    ],
+  },
+  alimentos: {
+    n: 'industria de alimentos',
+    items: [
+      ['cofia', 'cofia o gorro que cubra el pelo'],
+      ['mascarilla', 'mascarilla'],
+      ['guantes', 'guantes'],
+      ['ropa', 'ropa de trabajo limpia o delantal'],
+      ['calzado', 'botas o calzado de seguridad'],
+    ],
+  },
+  agro: {
+    n: 'agrícola',
+    items: [
+      ['guantes', 'guantes'],
+      ['respirador', 'respirador o mascarilla (si aplica agroquímicos)'],
+      ['lentes', 'lentes (si aplica agroquímicos)'],
+      ['ropa', 'ropa de manga larga'],
+      ['calzado', 'botas o calzado cerrado'],
+      ['sombrero', 'protección solar (sombrero o legionario)'],
+    ],
+  },
+  industrial: {
+    n: 'planta industrial general',
+    items: [
+      ['casco', 'casco de seguridad'],
+      ['lentes', 'lentes de seguridad'],
+      ['guantes', 'guantes de trabajo'],
+      ['calzado', 'calzado de seguridad'],
+      ['chaleco', 'chaleco o ropa reflectante'],
+      ['auditiva', 'protección auditiva (si hay ruido)'],
+    ],
+  },
 };
-const eppPrompt = (sec) => { const S = EPP[sec] || EPP.industrial; return `Eres un experto en prevención de riesgos laborales en Chile (DS 594, Ley 16.744). Revisas una foto de un trabajo en el sector ${S.n}.
+const eppPrompt = (sec) => {
+  const S = EPP[sec] || EPP.industrial;
+  return `Eres un experto en prevención de riesgos laborales en Chile (DS 594, Ley 16.744). Revisas una foto de un trabajo en el sector ${S.n}.
 EPP exigido en este sector, con su identificador: ${S.items.map(([k, d]) => `${k} = ${d}`).join('; ')}.
 Para cada persona visible (máximo 8, primero las más grandes en la imagen) evalúa cada EPP de la lista. Entrega SOLO un objeto JSON en español de Chile:
 {"resumen": "una o dos frases sobre el cumplimiento",
@@ -78,7 +211,8 @@ Para cada persona visible (máximo 8, primero las más grandes en la imagen) eva
    "riesgo": "alto" | "medio" | "bajo", "accion": "qué corregir, concreto"}],
  "condiciones": [{"titulo": "corto", "detalle": "condición insegura visible", "severidad": "alta" | "media" | "baja", "caja": [x1, y1, x2, y2]}],
  "no_se_puede_evaluar": "lo que la foto no permite confirmar"}
-Reglas: cajas en coordenadas normalizadas de 0 a 1000 (x1,y1 arriba a la izquierda), la caja de una persona la cubre de pies a cabeza. "no_visible" si esa parte del cuerpo no se ve o la persona está muy lejos para afirmarlo; "no_aplica" SOLO para los EPP que tienen una condición entre paréntesis y esa condición no se da (por ejemplo arnés sin trabajo en altura); los demás EPP siempre se exigen, así que si no se ven puestos es "falta". No adivines: ante la duda usa "no_visible". "incorrecto" es EPP presente pero mal usado (casco sin abrochar en altura, lentes en la frente, chaleco abierto). Riesgo alto si falta un EPP crítico para la tarea que hace. Condiciones: máximo 4, solo lo que se ve (trabajo en altura sin protección colectiva, chispas sin resguardo, orden y aseo). Si no hay personas, personas vacío y explícalo en el resumen.`; };
+Reglas: cajas en coordenadas normalizadas de 0 a 1000 (x1,y1 arriba a la izquierda), la caja de una persona la cubre de pies a cabeza. "no_visible" si esa parte del cuerpo no se ve o la persona está muy lejos para afirmarlo; "no_aplica" SOLO para los EPP que tienen una condición entre paréntesis y esa condición no se da (por ejemplo arnés sin trabajo en altura); los demás EPP siempre se exigen, así que si no se ven puestos es "falta". No adivines: ante la duda usa "no_visible". "incorrecto" es EPP presente pero mal usado (casco sin abrochar en altura, lentes en la frente, chaleco abierto). Riesgo alto si falta un EPP crítico para la tarea que hace. Condiciones: máximo 4, solo lo que se ve (trabajo en altura sin protección colectiva, chispas sin resguardo, orden y aseo). Si no hay personas, personas vacío y explícalo en el resumen.`;
+};
 const GAUGE_PROMPT = `Eres un instrumentista. La foto muestra un instrumento de aguja (manómetro, termómetro, amperímetro, voltímetro, etc.).
 1) Lee la escala principal (si hay dos, la más grande o la exterior con números más grandes).
 2) Lista TODOS los números impresos de esa escala, cada uno con la posición del centro del número en la imagen, en coordenadas normalizadas de 0 a 1000 (x a la derecha, y hacia abajo).
@@ -101,13 +235,23 @@ export default {
   async fetch(req, env) {
     const origin = req.headers.get('Origin') || '';
     const ok = ORIGINS.includes(origin);
-    if (req.method === 'OPTIONS') return new Response(null, {status: ok ? 204 : 403, headers: ok ? cors(origin) : {}});
-    if (req.method !== 'POST') return new Response('Centinela NVIDIA · solo POST desde jsnn15.github.io', {status: 405});
+    if (req.method === 'OPTIONS')
+      return new Response(null, {status: ok ? 204 : 403, headers: ok ? cors(origin) : {}});
+    if (req.method !== 'POST')
+      return new Response('Intermediario NVIDIA de los demos de jsnn15.github.io: solo acepta POST.', {
+        status: 405,
+      });
     if (!ok) return json({error: 'origen no permitido'}, 403, ORIGINS[0]);
     const ip = req.headers.get('CF-Connecting-IP') || 'local';
     const path = new URL(req.url).pathname;
-    if (limited(ip + path, path === '/embed' ? 30 : 12)) return json({error: 'Demasiadas consultas seguidas. Espera un minuto.'}, 429, origin);
-    let b; try { b = await req.json(); } catch { return json({error: 'cuerpo inválido'}, 400, origin); }
+    if (limited(ip + path, path === '/embed' ? 30 : 12))
+      return json({error: 'Demasiadas consultas seguidas. Espera un minuto.'}, 429, origin);
+    let b;
+    try {
+      b = await req.json();
+    } catch {
+      return json({error: 'cuerpo inválido'}, 400, origin);
+    }
     const t0 = Date.now();
     try {
       if (path === '/inspect') {
@@ -118,7 +262,11 @@ export default {
       if (path === '/epp') {
         const sec = EPP[b.sector] ? b.sector : 'industrial';
         const result = await visionJSON(env, eppPrompt(sec), img(b.image), 2200, 0.1);
-        return json({ok: true, model: VLM, ms: Date.now() - t0, sector: sec, items: EPP[sec].items, result}, 200, origin);
+        return json(
+          {ok: true, model: VLM, ms: Date.now() - t0, sector: sec, items: EPP[sec].items, result},
+          200,
+          origin
+        );
       }
       if (path === '/gauge') {
         const result = await visionJSON(env, GAUGE_PROMPT, img(b.image), 900, 0.0);
@@ -126,19 +274,47 @@ export default {
       }
       if (path === '/turno') {
         const snap = clip(JSON.stringify(b.snapshot || {}), 14000);
-        const hist = (Array.isArray(b.history) ? b.history : []).slice(-6).map((m) => ({role: m.role === 'assistant' ? 'assistant' : 'user', content: clip(m.content, 1200)}));
-        const msgs = [{role: 'system', content: TURNO_SYS}, ...hist, {role: 'user', content: `Estado de la planta ahora:\n${snap}\n\nPregunta del jefe de turno: ${clip(b.question, 600)}`}];
+        const hist = (Array.isArray(b.history) ? b.history : [])
+          .slice(-6)
+          .map((m) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: clip(m.content, 1200),
+          }));
+        const msgs = [
+          {role: 'system', content: TURNO_SYS},
+          ...hist,
+          {
+            role: 'user',
+            content: `Estado de la planta ahora:\n${snap}\n\nPregunta del jefe de turno: ${clip(b.question, 600)}`,
+          },
+        ];
         const {model, out} = await smart(env, msgs, 600, 0.2);
         return json({ok: true, model, ms: Date.now() - t0, answer: out}, 200, origin);
       }
       if (path === '/embed') {
         const texts = (Array.isArray(b.texts) ? b.texts : [b.text]).slice(0, 4).map((t) => clip(t, 1000));
-        const d = await nv(env, '/embeddings', {model: EMB, input: texts, input_type: b.type === 'passage' ? 'passage' : 'query', encoding_format: 'float', dimensions: [256, 512, 1024].includes(b.dim) ? b.dim : undefined});
-        return json({ok: true, model: EMB, ms: Date.now() - t0, vectors: d.data.map((x) => x.embedding)}, 200, origin);
+        const d = await nv(env, '/embeddings', {
+          model: EMB,
+          input: texts,
+          input_type: b.type === 'passage' ? 'passage' : 'query',
+          encoding_format: 'float',
+          dimensions: [256, 512, 1024].includes(b.dim) ? b.dim : undefined,
+        });
+        return json(
+          {ok: true, model: EMB, ms: Date.now() - t0, vectors: d.data.map((x) => x.embedding)},
+          200,
+          origin
+        );
       }
       if (path === '/ric') {
-        const chunks = (Array.isArray(b.chunks) ? b.chunks : []).slice(0, 6).map((c, i) => `[${i + 1}] ${clip(c.title, 160)}\n${clip(c.text, 2200)}`).join('\n\n');
-        const msgs = [{role: 'system', content: RIC_SYS}, {role: 'user', content: `Extractos:\n${chunks}\n\nPregunta: ${clip(b.question, 500)}`}];
+        const chunks = (Array.isArray(b.chunks) ? b.chunks : [])
+          .slice(0, 6)
+          .map((c, i) => `[${i + 1}] ${clip(c.title, 160)}\n${clip(c.text, 2200)}`)
+          .join('\n\n');
+        const msgs = [
+          {role: 'system', content: RIC_SYS},
+          {role: 'user', content: `Extractos:\n${chunks}\n\nPregunta: ${clip(b.question, 500)}`},
+        ];
         const {model, out} = await smart(env, msgs, 700, 0.0);
         return json({ok: true, model, ms: Date.now() - t0, answer: out}, 200, origin);
       }
@@ -146,5 +322,5 @@ export default {
     } catch (e) {
       return json({error: String(e.message || e).slice(0, 200)}, 502, origin);
     }
-  }
+  },
 };
