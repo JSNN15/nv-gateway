@@ -19,23 +19,24 @@ GitHub Pages solo sirve archivos estáticos. Para que una página llame a un mod
 
 ## Rutas
 
-| Ruta | Usada por | Modelo | Entrada → salida |
-|---|---|---|---|
-| `POST /inspect` | [Inspector de terreno](https://github.com/JSNN15/inspector) | Nemotron Super VL | foto + tipo → hallazgos en JSON con caja |
-| `POST /gauge` | [Lector de instrumentos](https://github.com/JSNN15/lector) | Nemotron Super VL | foto → números de la escala con posición |
-| `POST /epp` | [Vigía EPP](https://github.com/JSNN15/vigia) | Nemotron Super VL | foto + sector → EPP de cada persona, riesgo y acción |
-| `POST /turno` | [Planta virtual](https://github.com/JSNN15/planta-virtual) | Nemotron Super (respaldo: Lightning 30B) | estado de la planta + pregunta → respuesta con tags |
-| `POST /embed` | [Consulta RIC](https://github.com/JSNN15/normativa), [Supervisor](https://github.com/JSNN15/supervisor) | Nemotron Embed 1B | texto → vector (256, 512 o 1024) |
-| `POST /ric` | [Consulta RIC](https://github.com/JSNN15/normativa) | Nemotron Super (respaldo: Lightning 30B) | pregunta + 6 extractos → respuesta con citas |
-| `POST /supervisa` | [Supervisor normativo](https://github.com/JSNN15/supervisor) | Nemotron Super VL | foto + tipo de inspección → hallazgos con caja y frase de búsqueda |
-| `POST /cita` | [Supervisor normativo](https://github.com/JSNN15/supervisor) | Nemotron Super (respaldo: Lightning 30B) | hallazgos + extractos recuperados → artículo elegido, exigencia y acción |
-| `POST /identifica` | [Supervisor normativo](https://github.com/JSNN15/supervisor) | Nemotron Super VL (razonamiento si hay duda) | foto → equipo, evidencia, alternativas y zona clave |
-| `POST /confirma` | Supervisor normativo | Nemotron Super VL | acercamiento + rasgos del equipo → cuáles se ven |
-| `POST /revisa` | Supervisor normativo | Nemotron Super VL | foto + acercamiento + lista → cumple, no cumple o no se ve por punto |
-| `POST /verifica` | Supervisor normativo | Nemotron Super VL | acercamiento de un punto → estado, sin ver la respuesta anterior |
-| `POST /critica` | Supervisor normativo | Nemotron Super VL | pares hallazgo–artículo → si el artículo lo exige de verdad |
-| `POST /reformula` | [Consulta eléctrica](https://github.com/JSNN15/consulta-electrica) | Nemotron Super | conversación + pregunta → consulta de búsqueda autónoma |
-| `POST /responde` | Consulta eléctrica | Nemotron Super | pregunta + 8 fragmentos → puntos con fragmento y cita textual |
+| Ruta               | Usada por                                                                                               | Modelo                                                                                                          | Entrada → salida                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /inspect`    | [Inspector de terreno](https://github.com/JSNN15/inspector)                                             | Nemotron Super VL                                                                                               | foto + tipo → hallazgos en JSON con caja                                                                                                    |
+| `POST /gauge`      | [Lector de instrumentos](https://github.com/JSNN15/lector)                                              | Nemotron Super VL                                                                                               | foto → números de la escala con posición                                                                                                    |
+| `POST /epp`        | [Vigía EPP](https://github.com/JSNN15/vigia)                                                            | Nemotron Super VL                                                                                               | foto + sector → EPP de cada persona, riesgo y acción                                                                                        |
+| `POST /planta`     | [Planta virtual](https://github.com/JSNN15/planta-virtual)                                              | `entender`: Nemotron Lightning 30B (respaldo: Super) · `diagnosticar`: Nemotron Super con esquema JSON estricto | pregunta + foto de la planta + consultas + extractos del manual + catálogo de acciones → diagnóstico estructurado que el navegador verifica |
+| `POST /turno`      | [Planta virtual](https://github.com/JSNN15/planta-virtual)                                              | Nemotron Super (respaldo: Lightning 30B)                                                                        | estado de la planta + pregunta → respuesta con tags                                                                                         |
+| `POST /embed`      | [Consulta RIC](https://github.com/JSNN15/normativa), [Supervisor](https://github.com/JSNN15/supervisor) | Nemotron Embed 1B                                                                                               | texto → vector (256, 512 o 1024)                                                                                                            |
+| `POST /ric`        | [Consulta RIC](https://github.com/JSNN15/normativa)                                                     | Nemotron Super (respaldo: Lightning 30B)                                                                        | pregunta + 6 extractos → respuesta con citas                                                                                                |
+| `POST /supervisa`  | [Supervisor normativo](https://github.com/JSNN15/supervisor)                                            | Nemotron Super VL                                                                                               | foto + tipo de inspección → hallazgos con caja y frase de búsqueda                                                                          |
+| `POST /cita`       | [Supervisor normativo](https://github.com/JSNN15/supervisor)                                            | Nemotron Super (respaldo: Lightning 30B)                                                                        | hallazgos + extractos recuperados → artículo elegido, exigencia y acción                                                                    |
+| `POST /identifica` | [Supervisor normativo](https://github.com/JSNN15/supervisor)                                            | Nemotron Super VL (razonamiento si hay duda)                                                                    | foto → equipo, evidencia, alternativas y zona clave                                                                                         |
+| `POST /confirma`   | Supervisor normativo                                                                                    | Nemotron Super VL                                                                                               | acercamiento + rasgos del equipo → cuáles se ven                                                                                            |
+| `POST /revisa`     | Supervisor normativo                                                                                    | Nemotron Super VL                                                                                               | foto + acercamiento + lista → cumple, no cumple o no se ve por punto                                                                        |
+| `POST /verifica`   | Supervisor normativo                                                                                    | Nemotron Super VL                                                                                               | acercamiento de un punto → estado, sin ver la respuesta anterior                                                                            |
+| `POST /critica`    | Supervisor normativo                                                                                    | Nemotron Super VL                                                                                               | pares hallazgo–artículo → si el artículo lo exige de verdad                                                                                 |
+| `POST /reformula`  | [Consulta eléctrica](https://github.com/JSNN15/consulta-electrica)                                      | Nemotron Super                                                                                                  | conversación + pregunta → consulta de búsqueda autónoma                                                                                     |
+| `POST /responde`   | Consulta eléctrica                                                                                      | Nemotron Super                                                                                                  | pregunta + 8 fragmentos → puntos con fragmento y cita textual                                                                               |
 
 ## Defensas
 
@@ -58,7 +59,7 @@ flowchart TD
 ```
 
 - **Origen:** solo `https://jsnn15.github.io` (y `localhost` para desarrollo). Desde otro sitio, el navegador recibe 403.
-- **Límite:** 12 consultas por minuto por IP y ruta (30 para `/embed`), además del límite propio de la API de NVIDIA.
+- **Límite:** 12 consultas por minuto por IP y ruta (30 para `/embed` y 24 para `/planta`, que hace dos llamadas por pregunta), además del límite propio de la API de NVIDIA.
 - **Entradas acotadas:** la imagen debe ser un dataURL JPEG, PNG o WebP de hasta 1,6 MB; los textos se recortan antes de llegar al modelo.
 - **Salida robusta:** si un modelo de visión devuelve JSON con comas sobrantes, se repara; si igual falla, se reintenta una vez.
 - **Respaldo:** las respuestas de texto usan el modelo grande, que se apega mejor a los datos; si falla o tarda más de 25 s, responde el modelo rápido.
@@ -80,11 +81,11 @@ NVIDIA_API_KEY=nvapi-... node dev.mjs    # escucha en :8787
 
 ## Archivos
 
-| Archivo | Qué es |
-|---|---|
-| `worker.js` | El Worker completo: rutas, prompts, defensas y respaldo. |
-| `dev.mjs` | Servidor local que envuelve `worker.fetch` para desarrollo. |
-| `wrangler.toml` | Configuración de despliegue (sin la clave). |
+| Archivo         | Qué es                                                      |
+| --------------- | ----------------------------------------------------------- |
+| `worker.js`     | El Worker completo: rutas, prompts, defensas y respaldo.    |
+| `dev.mjs`       | Servidor local que envuelve `worker.fetch` para desarrollo. |
+| `wrangler.toml` | Configuración de despliegue (sin la clave).                 |
 
 ---
 
