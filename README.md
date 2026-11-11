@@ -15,7 +15,7 @@
 
 GitHub Pages solo sirve archivos estáticos. Para que una página llame a un modelo de NVIDIA hace falta una clave, y una clave en el JavaScript de una página pública queda expuesta. Este Worker la guarda como **secreto de Cloudflare** y expone solo lo que las páginas necesitan.
 
-**No es un proxy abierto.** Cada ruta arma su propio prompt y elige su modelo en el servidor; el navegador solo envía la foto o la pregunta.
+Cada ruta arma su propio prompt y elige su modelo en el servidor; el navegador solo envía la foto o la pregunta. Aun así, una ruta que recibe texto libre puede ser empujada a responder otra cosa, así que las defensas no descansan en el prompt: descansan en quién puede llamar y cuánto.
 
 ## Rutas
 
@@ -43,34 +43,41 @@ GitHub Pages solo sirve archivos estáticos. Para que una página llame a un mod
 flowchart TD
     R[Solicitud] --> O{¿Origen permitido?}
     O -->|no| X1[403]
-    O -->|sí| M{¿POST?}
-    M -->|no| X2[405]
-    M -->|sí| L{"¿Más de 12/min<br/>por IP y ruta?"}
-    L -->|sí| X3[429]
-    L -->|no| V{"¿Cuerpo válido?<br/>imagen ≤ 1,6 MB, textos recortados"}
-    V -->|no| X4[400]
-    V -->|sí| RT{Ruta conocida}
+    O -->|sí| RT{¿Ruta conocida?}
     RT -->|no| X5[404]
-    RT -->|sí| N["Prompt fijo + modelo fijo<br/>→ API de NVIDIA"]
+    RT -->|sí| S{"¿Sesión firmada vigente<br/>para esta IP?"}
+    S -->|no| X2["401 · la página pide /sesion<br/>(con verificación de navegador)"]
+    S -->|sí| L{"¿Bajo el límite?<br/>24/min por IP · 36/min en total"}
+    L -->|no| X3[429]
+    L -->|sí| D{"¿Bajo el tope diario?<br/>1.500 consultas"}
+    D -->|no| X4[429]
+    D -->|sí| N["Prompt fijo + modelo fijo<br/>→ API de NVIDIA"]
     N --> F{"¿Modelo grande<br/>responde en 25 s?"}
     F -->|sí| OK[200 + JSON]
     F -->|no| FB["Modelo rápido<br/>de respaldo"] --> OK
 ```
 
-- **Origen:** solo `https://jsnn15.github.io` (y `localhost` para desarrollo). Desde otro sitio, el navegador recibe 403.
-- **Límite:** 12 consultas por minuto por IP y ruta (30 para `/embed`), además del límite propio de la API de NVIDIA.
+- **Origen:** solo `https://jsnn15.github.io` (y `localhost` para desarrollo). Sirve contra otros sitios web; un script puede falsificar la cabecera, por eso no es la única defensa.
+- **Sesión firmada:** `/sesion` entrega un pase de 30 minutos, firmado con HMAC y válido solo para la IP que lo pidió. Sin pase, las demás rutas responden 401. Si el Worker tiene el secreto `TURNSTILE_SECRET`, antes de entregar el pase exige una verificación de [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/): hace falta un navegador real, no basta con falsificar el origen. Las páginas lo resuelven solas con [`nv.js`](https://github.com/JSNN15/jsnn15.github.io/blob/main/nv.js).
+- **Límites en Cloudflare:** 24 consultas por minuto por IP y 36 por minuto en total (`RL_IP` y `RL_TODO`), compartidos entre instancias. El límite anterior vivía en la memoria de cada instancia: 36 consultas en paralelo pasaban todas.
+- **Tope diario:** 1.500 consultas en vivo, contadas en D1 (`DB`). Se guarda la fecha y el total; ninguna IP.
+- **Fragmentos por número:** `/ric` recibe números de fragmento y el servidor pone el texto desde el índice oficial de pliegos. Antes recibía el texto, y con texto inventado servía como modelo de uso general.
 - **Entradas acotadas:** la imagen debe ser un dataURL JPEG, PNG o WebP de hasta 1,6 MB; los textos se recortan antes de llegar al modelo.
-- **Salida robusta:** si un modelo de visión devuelve JSON con comas sobrantes, se repara; si igual falla, se reintenta una vez.
-- **Respaldo:** las respuestas de texto usan el modelo grande, que se apega mejor a los datos; si falla o tarda más de 25 s, responde el modelo rápido.
+- **Errores sin detalle interno:** si NVIDIA falla, la página recibe un aviso corto, no el cuerpo de la respuesta.
+- **Salida robusta y respaldo:** JSON con esquema estricto y un reintento; las respuestas de texto usan el modelo grande y, si tarda más de 25 s, el rápido.
 
-El límite por IP vive en memoria de cada instancia: frena abusos casuales, no un ataque distribuido. Para eso se usaría Cloudflare Rate Limiting o KV.
+**Lo que sigue abierto.** `/turno`, `/responde`, `/cita` y `/critica` reciben texto que arma la página; quedan acotados por largo, por el esquema de salida y por los límites de arriba. Sin el secreto de Turnstile, cualquier cliente que envíe el origen correcto puede pedir un pase. La clave gratuita de NVIDIA es para evaluación: un producto con clientes va con un proveedor de pago y una clave por cliente.
 
 ## Desplegar
 
 ```bash
 npx wrangler deploy                      # sube worker.js (wrangler.toml)
 npx wrangler secret put NVIDIA_API_KEY   # pega la clave; nunca va en el repositorio
+npx wrangler d1 create nv-portafolio-uso # tope diario; copia el id a wrangler.toml
+npx wrangler secret put TURNSTILE_SECRET # opcional: activa la verificación de navegador
 ```
+
+Los límites por minuto (`RL_IP`, `RL_TODO`) están declarados en `wrangler.toml`. La clave pública del widget de Turnstile va en `SITEKEY`, al comienzo de `worker.js`; el widget se crea en el panel de Cloudflare con el dominio de las páginas.
 
 Probar en local, con las páginas en `localhost:8770`:
 

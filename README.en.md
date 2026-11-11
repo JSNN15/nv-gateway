@@ -15,7 +15,7 @@
 
 GitHub Pages only serves static files. Calling an NVIDIA model from a page needs an API key, and a key inside a public page's JavaScript is exposed. This Worker keeps it as a **Cloudflare secret** and exposes only what the pages need.
 
-**It is not an open proxy.** Each route builds its own prompt and picks its model server-side; the browser only sends the photo or the question.
+Each route builds its own prompt and picks its model server-side; the browser only sends the photo or the question. A route that takes free text can still be pushed off-task, so the defences rest on who may call and how much, not on the prompt.
 
 ## Routes
 
@@ -58,12 +58,14 @@ flowchart TD
 ```
 
 - **Origin:** only `https://jsnn15.github.io` (plus `localhost` for development). Other sites get 403 in the browser.
-- **Rate limit:** 12 requests per minute per IP and route (30 for `/embed`), on top of NVIDIA's own API limit.
+- **Signed session:** `/sesion` issues a 30-minute pass, HMAC-signed and bound to the caller's IP; other routes answer 401 without it. With the `TURNSTILE_SECRET` secret set, the pass requires a Cloudflare Turnstile browser check first.
+- **Rate limits in Cloudflare:** 24 requests per minute per IP and 36 per minute overall (`RL_IP`, `RL_TODO`), shared across instances, plus a daily cap of 1,500 requests counted in D1 (date and total only, no IPs).
+- **Chunks by number:** `/ric` takes chunk numbers; the server fills in the text from the official index.
 - **Bounded input:** images must be JPEG, PNG or WebP data URLs up to 1.6 MB; texts are clipped before reaching the model.
 - **Robust output:** trailing commas in a vision model's JSON are repaired; otherwise it retries once.
 - **Fallback:** text answers use the large model, which sticks closer to the data; if it fails or takes over 25 s, the fast model answers.
 
-The per-IP limit lives in each instance's memory: it stops casual abuse, not a distributed attack. For that you would add Cloudflare Rate Limiting or KV.
+Still open: `/turno`, `/responde`, `/cita` and `/critica` take text built by the page; they are bounded by length, output schema and the limits above. Details in the [Spanish README](README.md#defensas).
 
 ## Deploy
 
