@@ -49,22 +49,24 @@ const llave = (env) =>
   (LLAVE ??= crypto.subtle
     .digest('SHA-256', enc.encode('nv-sesion-v1|' + env.NVIDIA_API_KEY))
     .then((h) => crypto.subtle.importKey('raw', h, {name: 'HMAC', hash: 'SHA-256'}, false, ['sign'])));
-const firma = async (env, exp, ip) => {
-  const f = await crypto.subtle.sign('HMAC', await llave(env), enc.encode(exp + '|' + ip));
+const firma = async (env, exp, red) => {
+  const f = await crypto.subtle.sign('HMAC', await llave(env), enc.encode(exp + '|' + red));
   return btoa(String.fromCharCode(...new Uint8Array(f)))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
 };
-// La sesión es "vencimiento.firma" y vale solo para la IP que la pidió
-const sesionNueva = async (env, ip) => {
+// La sesión es "vencimiento.firma" y vale solo en la red que la pidió (operador y país): la IP sola
+// cambia entre consultas en redes de empresa y en celulares, y dejaría fuera a personas reales
+const red = (req) => (req.cf ? `${req.cf.asn}|${req.cf.country}` : 'local');
+const sesionNueva = async (env, red) => {
   const exp = Date.now() + SESION_MIN * 60_000;
-  return `${exp}.${await firma(env, exp, ip)}`;
+  return `${exp}.${await firma(env, exp, red)}`;
 };
-const sesionValida = async (env, s, ip) => {
+const sesionValida = async (env, s, red) => {
   const [exp, f] = String(s || '').split('.');
   if (!/^\d{13}$/.test(exp) || +exp < Date.now() || !f) return false;
-  return f === (await firma(env, exp, ip));
+  return f === (await firma(env, exp, red));
 };
 // Turnstile comprueba que al otro lado hay un navegador real y no un script
 const navegadorReal = async (env, token, ip) => {
@@ -79,9 +81,12 @@ const navegadorReal = async (env, token, ip) => {
 
 // ---------- límites ----------
 // Devuelve el aviso para la persona, o '' si puede seguir
-const frenado = async (env, ip, path) => {
+const frenado = async (env, ip, path, ses) => {
   if (!env.RL_IP) return limited(ip + path, 30) ? 'Demasiadas consultas seguidas. Espera un minuto.' : '';
-  if (!(await env.RL_IP.limit({key: ip})).success) return 'Demasiadas consultas seguidas. Espera un minuto.';
+  const mucho = 'Demasiadas consultas seguidas. Espera un minuto.';
+  if (!(await env.RL_IP.limit({key: ip})).success) return mucho;
+  // también por sesión: en redes que rotan la IP, el límite por IP solo no alcanza
+  if (ses && !(await env.RL_IP.limit({key: 's:' + ses.slice(-32)})).success) return mucho;
   if (!(await env.RL_TODO.limit({key: 'todo'})).success)
     return 'Hay varias personas probando a la vez. Espera un minuto o usa los ejemplos guardados.';
   return '';
@@ -525,9 +530,10 @@ export default {
     } catch {
       return json({error: 'cuerpo inválido'}, 400, origin);
     }
-    if (path !== '/sesion' && EXIGE_SESION && !(await sesionValida(env, req.headers.get('X-NV-Sesion'), ip)))
+    const ses = req.headers.get('X-NV-Sesion') || '';
+    if (path !== '/sesion' && EXIGE_SESION && !(await sesionValida(env, ses, red(req))))
       return json({error: 'sesion'}, 401, origin);
-    const aviso = await frenado(env, ip, path);
+    const aviso = await frenado(env, ip, path, path === '/sesion' ? '' : ses);
     if (aviso) return json({error: aviso}, 429, origin);
     if (path === '/sesion') {
       if (env.TURNSTILE_SECRET) {
@@ -535,7 +541,7 @@ export default {
         if (!b.t) return json({error: 'verificacion', sitekey}, 401, origin);
         if (!(await navegadorReal(env, b.t, ip))) return json({error: 'verificacion', sitekey}, 401, origin);
       }
-      return json({ok: true, s: await sesionNueva(env, ip), min: SESION_MIN}, 200, origin);
+      return json({ok: true, s: await sesionNueva(env, red(req)), min: SESION_MIN}, 200, origin);
     }
     if (await topeDiario(env))
       return json(

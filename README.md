@@ -45,7 +45,7 @@ flowchart TD
     O -->|no| X1[403]
     O -->|sí| RT{¿Ruta conocida?}
     RT -->|no| X5[404]
-    RT -->|sí| S{"¿Sesión firmada vigente<br/>para esta IP?"}
+    RT -->|sí| S{"¿Sesión firmada vigente<br/>para esta red?"}
     S -->|no| X2["401 · la página pide /sesion<br/>(con verificación de navegador)"]
     S -->|sí| L{"¿Bajo el límite?<br/>24/min por IP · 36/min en total"}
     L -->|no| X3[429]
@@ -58,8 +58,8 @@ flowchart TD
 ```
 
 - **Origen:** solo `https://jsnn15.github.io` (y `localhost` para desarrollo). Sirve contra otros sitios web; un script puede falsificar la cabecera, por eso no es la única defensa.
-- **Sesión firmada:** `/sesion` entrega un pase de 30 minutos, firmado con HMAC y válido solo para la IP que lo pidió. Sin pase, las demás rutas responden 401. Si el Worker tiene el secreto `TURNSTILE_SECRET`, antes de entregar el pase exige una verificación de [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/): hace falta un navegador real, no basta con falsificar el origen. Las páginas lo resuelven solas con [`nv.js`](https://github.com/JSNN15/jsnn15.github.io/blob/main/nv.js).
-- **Límites en Cloudflare:** 24 consultas por minuto por IP y 36 por minuto en total (`RL_IP` y `RL_TODO`), compartidos entre instancias. El límite anterior vivía en la memoria de cada instancia: 36 consultas en paralelo pasaban todas.
+- **Sesión firmada:** `/sesion` entrega un pase de 30 minutos, firmado con HMAC y válido solo en la red que lo pidió (operador y país; la IP sola cambia entre consultas en redes de empresa y celulares). Sin pase, las demás rutas responden 401. Si el Worker tiene el secreto `TURNSTILE_SECRET`, antes de entregar el pase exige una verificación de [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/): hace falta un navegador real, no basta con falsificar el origen. Las páginas lo resuelven solas con [`nv.js`](https://github.com/JSNN15/jsnn15.github.io/blob/main/nv.js).
+- **Límites en Cloudflare:** 24 consultas por minuto por IP y por sesión, y 36 por minuto en total (`RL_IP` y `RL_TODO`), compartidos entre instancias. El límite anterior vivía en la memoria de cada instancia: 36 consultas en paralelo pasaban todas.
 - **Tope diario:** 1.500 consultas en vivo, contadas en D1 (`DB`). Se guarda la fecha y el total; ninguna IP.
 - **Fragmentos por número:** `/ric` recibe números de fragmento y el servidor pone el texto desde el índice oficial de pliegos. Antes recibía el texto, y con texto inventado servía como modelo de uso general.
 - **Entradas acotadas:** la imagen debe ser un dataURL JPEG, PNG o WebP de hasta 1,6 MB; los textos se recortan antes de llegar al modelo.

@@ -58,8 +58,8 @@ flowchart TD
 ```
 
 - **Origin:** only `https://jsnn15.github.io` (plus `localhost` for development). Other sites get 403 in the browser.
-- **Signed session:** `/sesion` issues a 30-minute pass, HMAC-signed and bound to the caller's IP; other routes answer 401 without it. With the `TURNSTILE_SECRET` secret set, the pass requires a Cloudflare Turnstile browser check first.
-- **Rate limits in Cloudflare:** 24 requests per minute per IP and 36 per minute overall (`RL_IP`, `RL_TODO`), shared across instances, plus a daily cap of 1,500 requests counted in D1 (date and total only, no IPs).
+- **Signed session:** `/sesion` issues a 30-minute pass, HMAC-signed and bound to the caller's network (ASN and country); other routes answer 401 without it. With the `TURNSTILE_SECRET` secret set, the pass requires a Cloudflare Turnstile browser check first.
+- **Rate limits in Cloudflare:** 24 requests per minute per IP and per session, 36 per minute overall (`RL_IP`, `RL_TODO`), shared across instances, plus a daily cap of 1,500 requests counted in D1 (date and total only, no IPs).
 - **Chunks by number:** `/ric` takes chunk numbers; the server fills in the text from the official index.
 - **Bounded input:** images must be JPEG, PNG or WebP data URLs up to 1.6 MB; texts are clipped before reaching the model.
 - **Robust output:** trailing commas in a vision model's JSON are repaired; otherwise it retries once.
