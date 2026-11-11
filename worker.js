@@ -1,13 +1,24 @@
 // Intermediario entre las páginas de jsnn15.github.io y la API de NVIDIA.
-// La clave vive solo aquí, como secreto NVIDIA_API_KEY. Cada ruta arma su propio prompt:
-// no es un proxy abierto, solo hace las tareas fijas de las páginas.
+// La clave vive solo aquí, como secreto NVIDIA_API_KEY. Cada ruta arma su propio prompt y elige su modelo.
+// Defensas, en orden: origen, sesión firmada (con verificación de navegador si hay secreto de Turnstile),
+// límite por IP y global en Cloudflare, y tope diario en D1.
 const ORIGINS = ['https://jsnn15.github.io', 'http://localhost:8770', 'http://127.0.0.1:8770'];
 const BASE = 'https://integrate.api.nvidia.com/v1';
 const VLM = 'nvidia/nemotron-3.5-super-vl-120b-a12b';
 const LLM = 'nvidia/nemotron-3.5-lightning-30b-a3b';
 const EMB = 'nvidia/nemotron-3.5-embed-1b';
 const MAX_IMG = 1_600_000; // largo máximo del dataURL (≈1,2 MB de JPEG)
-const hits = new Map(); // límite por IP (por instancia; NVIDIA limita además a 40/min)
+const SITEKEY = '0x4AAAAAAF8y8wml3KCMuiel'; // público: identifica el widget de Turnstile de estas páginas
+const EXIGE_SESION = false; // se activa cuando todas las páginas ya piden sesión
+const SESION_MIN = 30;
+const TOPE_DIA = 1500; // consultas en vivo por día, sumando todas las máquinas
+const RIC_URL = 'https://jsnn15.github.io/normativa/s/ric.json';
+const RUTAS = new Set(
+  'inspect epp gauge turno embed ric supervisa cita identifica confirma revisa verifica critica reformula responde'
+    .split(' ')
+    .map((r) => '/' + r)
+);
+const hits = new Map(); // respaldo en memoria, solo si faltan los límites de Cloudflare (desarrollo local)
 
 const json = (obj, status, origin) =>
   new Response(JSON.stringify(obj), {
@@ -17,7 +28,7 @@ const json = (obj, status, origin) =>
 const cors = (origin) => ({
   'Access-Control-Allow-Origin': origin || ORIGINS[0],
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-NV-Sesion',
   'Access-Control-Max-Age': '86400',
   Vary: 'Origin',
 });
@@ -30,6 +41,86 @@ const limited = (key, per = 12) => {
   return w.length > per;
 };
 
+// ---------- sesión firmada ----------
+// La llave de firma se deriva del secreto que ya existe: no hay un segundo secreto que cuidar.
+const enc = new TextEncoder();
+let LLAVE;
+const llave = (env) =>
+  (LLAVE ??= crypto.subtle
+    .digest('SHA-256', enc.encode('nv-sesion-v1|' + env.NVIDIA_API_KEY))
+    .then((h) => crypto.subtle.importKey('raw', h, {name: 'HMAC', hash: 'SHA-256'}, false, ['sign'])));
+const firma = async (env, exp, ip) => {
+  const f = await crypto.subtle.sign('HMAC', await llave(env), enc.encode(exp + '|' + ip));
+  return btoa(String.fromCharCode(...new Uint8Array(f)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+};
+// La sesión es "vencimiento.firma" y vale solo para la IP que la pidió
+const sesionNueva = async (env, ip) => {
+  const exp = Date.now() + SESION_MIN * 60_000;
+  return `${exp}.${await firma(env, exp, ip)}`;
+};
+const sesionValida = async (env, s, ip) => {
+  const [exp, f] = String(s || '').split('.');
+  if (!/^\d{13}$/.test(exp) || +exp < Date.now() || !f) return false;
+  return f === (await firma(env, exp, ip));
+};
+// Turnstile comprueba que al otro lado hay un navegador real y no un script
+const navegadorReal = async (env, token, ip) => {
+  const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({secret: env.TURNSTILE_SECRET, response: clip(token, 2048), remoteip: ip}),
+  });
+  const d = await r.json().catch(() => ({}));
+  return d.success === true;
+};
+
+// ---------- límites ----------
+// Devuelve el aviso para la persona, o '' si puede seguir
+const frenado = async (env, ip, path) => {
+  if (!env.RL_IP) return limited(ip + path, 30) ? 'Demasiadas consultas seguidas. Espera un minuto.' : '';
+  if (!(await env.RL_IP.limit({key: ip})).success) return 'Demasiadas consultas seguidas. Espera un minuto.';
+  if (!(await env.RL_TODO.limit({key: 'todo'})).success)
+    return 'Hay varias personas probando a la vez. Espera un minuto o usa los ejemplos guardados.';
+  return '';
+};
+// Cuenta la consulta del día en D1 (solo fecha y total, ninguna IP). Si D1 falla, no bloquea.
+const topeDiario = async (env) => {
+  if (!env.DB) return false;
+  const dia = new Date().toISOString().slice(0, 10);
+  const sumar = () =>
+    env.DB.prepare(
+      'INSERT INTO uso (dia, n) VALUES (?1, 1) ON CONFLICT(dia) DO UPDATE SET n = n + 1 RETURNING n'
+    )
+      .bind(dia)
+      .first('n');
+  try {
+    return (await sumar()) > TOPE_DIA;
+  } catch {
+    try {
+      await env.DB.prepare('CREATE TABLE IF NOT EXISTS uso (dia TEXT PRIMARY KEY, n INTEGER NOT NULL)').run();
+      return (await sumar()) > TOPE_DIA;
+    } catch {
+      return false;
+    }
+  }
+};
+
+// Índice de pliegos RIC, leído una vez por instancia: /ric recibe números de fragmento, no texto
+let RIC;
+const ric = () =>
+  (RIC ??= fetch(RIC_URL)
+    .then((r) => {
+      if (!r.ok) throw new Error('no se pudo leer el índice de pliegos');
+      return r.json();
+    })
+    .catch((e) => {
+      RIC = undefined;
+      throw e;
+    }));
+
 async function nv(env, path, body) {
   const r = await fetch(BASE + path, {
     method: 'POST',
@@ -41,8 +132,11 @@ async function nv(env, path, body) {
     body: JSON.stringify(body),
   });
   if (!r.ok) {
-    const t = await r.text();
-    throw new Error(`nvidia ${r.status}: ${t.slice(0, 160)}`);
+    throw new Error(
+      r.status === 429
+        ? 'La IA está con mucha demanda. Espera un minuto o usa los ejemplos guardados.'
+        : `La IA no respondió (código ${r.status}). Intenta de nuevo.`
+    );
   }
   return r.json();
 }
@@ -424,14 +518,31 @@ export default {
     if (!ok) return json({error: 'origen no permitido'}, 403, ORIGINS[0]);
     const ip = req.headers.get('CF-Connecting-IP') || 'local';
     const path = new URL(req.url).pathname;
-    if (limited(ip + path, path === '/embed' ? 30 : 12))
-      return json({error: 'Demasiadas consultas seguidas. Espera un minuto.'}, 429, origin);
+    if (path !== '/sesion' && !RUTAS.has(path)) return json({error: 'ruta desconocida'}, 404, origin);
     let b;
     try {
       b = await req.json();
     } catch {
       return json({error: 'cuerpo inválido'}, 400, origin);
     }
+    if (path !== '/sesion' && EXIGE_SESION && !(await sesionValida(env, req.headers.get('X-NV-Sesion'), ip)))
+      return json({error: 'sesion'}, 401, origin);
+    const aviso = await frenado(env, ip, path);
+    if (aviso) return json({error: aviso}, 429, origin);
+    if (path === '/sesion') {
+      if (env.TURNSTILE_SECRET) {
+        const sitekey = env.TURNSTILE_SITEKEY || SITEKEY;
+        if (!b.t) return json({error: 'verificacion', sitekey}, 401, origin);
+        if (!(await navegadorReal(env, b.t, ip))) return json({error: 'verificacion', sitekey}, 401, origin);
+      }
+      return json({ok: true, s: await sesionNueva(env, ip), min: SESION_MIN}, 200, origin);
+    }
+    if (await topeDiario(env))
+      return json(
+        {error: 'Se alcanzó el tope diario de consultas en vivo. Los ejemplos guardados siguen funcionando.'},
+        429,
+        origin
+      );
     const t0 = Date.now();
     try {
       if (path === '/inspect') {
@@ -612,10 +723,17 @@ Responde estado: cumple, no_cumple o no_se_ve. no_cumple solo si el acercamiento
         );
       }
       if (path === '/ric') {
-        const chunks = (Array.isArray(b.chunks) ? b.chunks : [])
+        // la página manda los números de los fragmentos; el texto lo pone el servidor desde el índice oficial
+        const I = await ric();
+        const chunks = (Array.isArray(b.ids) ? b.ids : [])
+          .filter((i) => Number.isInteger(i) && I.c[i])
           .slice(0, 6)
-          .map((c, i) => `[${i + 1}] ${clip(c.title, 160)}\n${clip(c.text, 2200)}`)
+          .map((i, k) => {
+            const c = I.c[i];
+            return `[${k + 1}] RIC N°${c[0]} ${I.mat[c[0]]} · sección ${c[1]}${c[2] ? ' · ' + c[2] : ''} · pág. ${c[3]}\n${clip(c[4], 2200)}`;
+          })
           .join('\n\n');
+        if (!chunks) return json({error: 'faltan los fragmentos de la consulta'}, 400, origin);
         const msgs = [
           {role: 'system', content: RIC_SYS},
           {role: 'user', content: `Extractos:\n${chunks}\n\nPregunta: ${clip(b.question, 500)}`},
@@ -623,7 +741,7 @@ Responde estado: cumple, no_cumple o no_se_ve. no_cumple solo si el acercamiento
         const {model, out} = await smart(env, msgs, 700, 0.0);
         return json({ok: true, model, ms: Date.now() - t0, answer: out}, 200, origin);
       }
-      return json({error: 'ruta desconocida'}, 404, origin);
+      return json({error: 'ruta sin implementar'}, 404, origin);
     } catch (e) {
       return json({error: String(e.message || e).slice(0, 200)}, 502, origin);
     }
