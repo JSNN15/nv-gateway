@@ -13,8 +13,9 @@ const EXIGE_SESION = true; // todas las páginas piden sesión con nv.js
 const SESION_MIN = 30;
 const TOPE_DIA = 1500; // consultas en vivo por día, sumando todas las máquinas
 const RIC_URL = 'https://jsnn15.github.io/normativa/s/ric.json';
+const CORPUS_URL = 'https://jsnn15.github.io/consulta-electrica/s/corpus.json';
 const RUTAS = new Set(
-  'inspect epp gauge turno embed ric supervisa cita identifica confirma revisa verifica critica reformula responde'
+  'inspect epp gauge turno embed ric supervisa cita identifica confirma revisa verifica critica reformula responde plan redacta juez'
     .split(' ')
     .map((r) => '/' + r)
 );
@@ -126,8 +127,78 @@ const ric = () =>
       throw e;
     }));
 
-async function nv(env, path, body) {
+// Texto de las normas del chat. /redacta y /juez reciben números de fragmento y el texto lo pone el servidor.
+// Se pide por tramos de 256 fragmentos y solo los que hacen falta: leer el corpus entero (2,3 MB) en cada
+// arranque gastaba casi todo el tiempo de CPU que el plan gratuito da por consulta.
+const TRAMO = 256;
+const NORMAS = {d: [], mat: {}};
+const TRAMOS = new Map();
+async function corpus(env, ids) {
+  const base = (env.CORPUS_URL || CORPUS_URL).replace(/[^/]+$/, 't/');
+  const tramos = [
+    ...new Set(
+      (Array.isArray(ids) ? ids : [])
+        .filter((i) => Number.isInteger(i) && i >= 0 && i < 64 * TRAMO)
+        .map((i) => Math.floor(i / TRAMO))
+    ),
+  ];
+  await Promise.all(
+    tramos.map((k) => {
+      if (!TRAMOS.has(k))
+        TRAMOS.set(
+          k,
+          fetch(`${base}${k}.json`)
+            .then((r) => {
+              if (!r.ok) throw new Error('no se pudo leer el texto de las normas');
+              return r.json();
+            })
+            .then((j) => {
+              j.d.forEach((d, n) => (NORMAS.d[k * TRAMO + n] = d));
+              Object.assign(NORMAS.mat, j.mat);
+            })
+            .catch((e) => {
+              TRAMOS.delete(k);
+              throw e;
+            })
+        );
+      return TRAMOS.get(k);
+    })
+  );
+  return NORMAS;
+}
+const AMBITO = {
+  consumo: 'instalaciones de consumo en baja tensión (interior de casas, locales e industrias)',
+  redes:
+    'líneas y redes de media y alta tensión en calles y terrenos: postes, franjas y distancias de seguridad a edificaciones y personas',
+  instaladores: 'licencias de instaladores eléctricos',
+  generacion: 'generación distribuida para autoconsumo (netbilling)',
+  servicio: 'relación entre clientes y empresa distribuidora (suministro, empalmes, cobros)',
+};
+// Fragmentos pedidos por número, con su norma, materia y ámbito a la vista del modelo
+const extractos = (C, ids, max = 13) =>
+  (Array.isArray(ids) ? ids : [])
+    .filter((i) => Number.isInteger(i) && C.d[i])
+    .slice(0, max)
+    .map((i, k) => {
+      const d = C.d[i];
+      return `[${k + 1}] ${d.n} · ${d.r} — ${C.mat[d.n] || ''}${d.h ? ' › ' + d.h : ''} (ámbito: ${AMBITO[d.a] || d.a})\n${clip(d.t, 2000)}`;
+    });
+const fichaTxt = (f) => {
+  const o = f && typeof f === 'object' ? f : {};
+  const x = ['recinto', 'sistema', 'tension', 'potencia', 'otros']
+    .map((k) => (o[k] ? `${k}: ${clip(o[k], 120)}` : ''))
+    .filter(Boolean);
+  return x.length ? x.join('; ') : 'sin datos todavía';
+};
+const memoriaTxt = (m) =>
+  (Array.isArray(m) ? m : [])
+    .slice(-14)
+    .map((l, i) => `${i + 1}. ${clip(l, 220)}`)
+    .join('\n') || 'nada todavía';
+
+async function nv(env, path, body, ms = 0) {
   const r = await fetch(BASE + path, {
+    signal: ms ? AbortSignal.timeout(ms) : undefined, // tiempo límite opcional: el chat no puede quedarse esperando
     method: 'POST',
     headers: {
       Authorization: 'Bearer ' + env.NVIDIA_API_KEY,
@@ -197,20 +268,25 @@ const visionJSON = async (env, prompt, image, max_tokens, temperature) => {
   }
 };
 // Respuesta con esquema JSON estricto: el modelo no puede devolver otra forma. El razonamiento se activa solo si se pide.
-const schemaCall = async (env, messages, schema, max_tokens, think = false) => {
+const schemaCall = async (env, messages, schema, max_tokens, think = false, temperature = 0.1, ms = 0) => {
   let err;
   // un reintento: la API gratuita a veces responde 500 o corta la salida
   for (let k = 0; k < 2; k++) {
     try {
-      const d = await nv(env, '/chat/completions', {
-        model: VLM,
-        messages,
-        max_tokens: k ? Math.round(max_tokens * 1.5) : max_tokens,
-        temperature: 0.1,
-        stream: false,
-        chat_template_kwargs: {enable_thinking: think},
-        response_format: {type: 'json_schema', json_schema: {name: 'respuesta', schema, strict: true}},
-      });
+      const d = await nv(
+        env,
+        '/chat/completions',
+        {
+          model: VLM,
+          messages,
+          max_tokens: k ? Math.round(max_tokens * 1.5) : max_tokens,
+          temperature,
+          stream: false,
+          chat_template_kwargs: {enable_thinking: think},
+          response_format: {type: 'json_schema', json_schema: {name: 'respuesta', schema, strict: true}},
+        },
+        ms
+      );
       return parseJSON(d.choices[0].message.content || '');
     } catch (e) {
       err = e;
@@ -510,6 +586,132 @@ Decide qué extractos exigen directamente lo que el hallazgo incumple. Responde 
 Reglas: usa solo ids que aparecen en los extractos de ese mismo hallazgo. Si ninguno lo cubre de forma directa: "ids": [], "exigencia": "Ningún extracto recuperado lo exige de forma directa" y confianza baja.
 No inventes artículos, números, distancias ni valores que no estén en los extractos. Un artículo general (deber general de seguridad, por ejemplo) solo si no hay uno específico, y con confianza baja. Español de Chile, frases breves.`;
 
+// ---------- Chat de normativa, versión con memoria del caso ----------
+const PLAN_SCHEMA = S.obj({
+  tipo: S.en(['pregunta', 'dato', 'aclaracion', 'calculo', 'resumen', 'saludo', 'fuera']),
+  ficha: S.obj({recinto: S.str, sistema: S.str, tension: S.str, potencia: S.str, otros: S.str}),
+  tema: S.str,
+  ambitos: S.arr(S.en(['consumo', 'redes', 'instaladores', 'generacion', 'servicio']), 3),
+  consultas: S.arr(S.str, 3),
+  falta: S.str,
+  calculo: S.obj({
+    tipo: S.en(['ninguno', 'corriente', 'caida_tension']),
+    potencia_kw: S.num,
+    tension_v: S.num,
+    fases: S.int,
+    fp: S.num,
+    largo_m: S.num,
+    seccion_mm2: S.num,
+    corriente_a: S.num,
+  }),
+  directa: S.str,
+});
+const PLAN_SYS = `Eres el planificador de un asistente de normativa eléctrica chilena para instaladores. No respondes la consulta técnica: decides qué hacer con el último mensaje y dejas todo listo para buscar en las normas.
+Recibes la ficha del caso, el tema vigente, la memoria de la conversación y el último mensaje.
+Si recibes una "Pregunta pendiente", el último mensaje es casi siempre el dato que faltaba: el tipo es aclaracion (o calculo, si la pregunta pendiente pedía dimensionar), y las consultas y el cálculo se arman para responder la pregunta pendiente con ese dato. No vuelvas a pedir datos salvo que sin ellos sea imposible responder.
+
+tipo:
+- pregunta: pide una exigencia o un dato de la norma.
+- dato: la persona cuenta algo de su caso sin preguntar nada ("es un local comercial trifásico de 30 kW"). Si el mensaje trae una pregunta, nunca es dato.
+- aclaracion: responde a algo que el asistente le preguntó, o corrige o discute la respuesta anterior ("es para una casa", "¿estás seguro?", "¿en qué punto sale eso?").
+- calculo: pide dimensionar o calcular (corriente, sección por caída de tensión).
+- resumen: pide un resumen, o pregunta qué se dijo antes en la conversación ("¿qué potencia te dije?", "¿qué me respondiste de los enchufes?"). Si vuelve sobre una exigencia técnica para confirmarla o aplicarla ("entonces, ¿puedo usar 1,5 mm² en los enchufes?"), no es resumen: es pregunta y se busca de nuevo.
+- saludo: saludo, agradecimiento o pregunta sobre qué hace el asistente.
+- fuera: no trata de instalaciones eléctricas ni de su normativa en Chile. El trato con la distribuidora (corte por deuda, reposición del servicio, cobros, medidores, plazos para conectar) NO es fuera: está en el reglamento de servicios eléctricos y es pregunta, con ámbito servicio. Fuera son, por ejemplo, el valor de las tarifas en pesos, normas de otros países, ascensores, gas, o temas que no son eléctricos.
+
+ficha: devuelve la ficha COMPLETA actualizada. Conserva lo que ya estaba y agrega lo nuevo del mensaje. recinto (casa, local comercial, industria, baño, piscina…), sistema (monofásico o trifásico), tension, potencia, otros (cualquier otro dato del caso: largo del tramo, equipo, material). Campo sin dato: "".
+tema: de qué trata la conversación ahora, en una frase corta. Si el mensaje abre un contexto nuevo (baño, piscina, intemperie), el tema pasa a ser la instalación en ese contexto ("alumbrado en un baño: qué exige la norma"), no solo el dato que se venía conversando. Si el mensaje depende de lo anterior ("¿y la protección?", "¿de cuántos amperes?"), el tema incluye a qué se refiere.
+ambitos: dónde buscar. consumo = instalaciones interiores de baja tensión (pliegos RIC y DS 8). redes = líneas y redes de media y alta tensión, postes, franjas y distancias de seguridad, subestaciones de empresas (pliegos RPTD y DS 109). instaladores = clases de licencia A, B, C, D y qué puede hacer cada una (DS 92). generacion = paneles solares conectados a la red, netbilling, inyección de excedentes (DS 57). servicio = trato con la distribuidora: quién paga el empalme, plazos, cortes, medidores, cobros (DS 327).
+consultas: de 1 a 3 búsquedas con las palabras de la norma chilena, cada una autónoma y corta. La primera es la principal. Agrega otra solo si hace falta un segundo dato para responder ESTA pregunta (por ejemplo, para un tramo largo: "caída de tensión máxima admisible"); no busques temas que no se preguntaron (si preguntan por la sección del conductor, no busques protecciones). Si el mensaje abre un contexto nuevo ("¿y en un baño?", "¿y si es una piscina?"), una de las búsquedas pide las exigencias propias de ese contexto ("instalaciones en salas de baño: volúmenes y protecciones"). Incluye los datos de la ficha que cambian la respuesta (recinto, sistema). No copies frases de respuestas anteriores ni agregues siglas como "RIC". Para saludo, dato, resumen y fuera: lista vacía.
+Palabras de la norma chilena que debes usar en las búsquedas: enchufe, centro, circuito, alimentador, tablero, empalme, protector diferencial, protección termomagnética, puesta a tierra, canalización, tubería, conductor, sección. No uses "toma de corriente", "receptáculo", "disyuntor diferencial" ni "magnetotérmico": no aparecen en la norma.
+Vocabulario de terreno → norma: "empalme" es la conexión del cliente a la red de la distribuidora (acometida, medidor, potencia contratada), no una unión de cables; "automático" = interruptor termomagnético o disyuntor; "diferencial" = protector diferencial; "tubo" o "cañería" = tubería o canalización; "tierra" = puesta a tierra; "cable de internet, citófono o alarma" = circuitos de comunicaciones o de corrientes débiles; "TE1" = declaración de puesta en servicio; "tablero" = tablero eléctrico; "centro" = cada punto de luz o de enchufe de un circuito ("cuántos enchufes por circuito" se busca como "cantidad de centros que es posible instalar en un circuito").
+falta: si la respuesta cambia según un dato que no está en la ficha ni en el mensaje (tipo de recinto, monofásico o trifásico, potencia) y NO existe una regla general útil, escribe UNA pregunta corta para pedirlo. Si hay regla general, deja "" y se responde con la condición. No preguntes lo que ya está en la ficha, y no pidas el recinto si lo que se pregunta es un cálculo que ya trae sus datos.
+calculo: si pide un cálculo, tipo corriente (con potencia y tensión) o caida_tension (con largo del tramo); completa los números que se conozcan por el mensaje o la ficha y deja 0 los que no. fases 1 o 3. Si no hay cálculo: tipo ninguno y todo en 0.
+directa: solo para dato, saludo, resumen y fuera; en los demás "". dato: confirma en una frase lo que anotaste y pregunta qué necesita saber. saludo: una frase y qué puede preguntar. resumen: responde con lo que consta en la ficha y la memoria, en 1 a 5 frases, con las normas citadas; si preguntan por un dato del caso, dilo tal como está en la ficha. fuera: di en primera persona y en una frase que solo cubres normativa eléctrica chilena ("Eso no lo cubro: solo respondo sobre normativa eléctrica chilena."). Español de Chile, sin adornos.`;
+
+const RED_SCHEMA = S.obj({
+  puntos: S.arr(S.obj({n: S.int, numeral: S.str, textual: S.str, texto: S.str}), 4),
+  aviso: S.str,
+  sin_respaldo: S.bool,
+  buscar_mas: S.str,
+  memoria: S.str,
+  sugerencias: S.arr(S.str, 3),
+});
+const RED_SYS = `Eres asesor de normativa eléctrica chilena para instaladores y maestros eléctricos. Respondes en español de Chile, directo, como un ingeniero en terreno.
+Recibes la ficha del caso, la memoria de la conversación, la pregunta a responder y extractos numerados [1], [2]… Cada extracto dice de qué norma es, su materia y su ámbito. Usa SOLO esos extractos.
+Antes de usar un extracto, comprueba que trata de lo que se pregunta y que su ámbito calza con el caso: una tabla de cercos eléctricos no responde una pregunta sobre líneas de media tensión; una regla de locales comerciales no responde por una casa. Si solo hay extractos de otro tema, no los uses.
+Responde exactamente lo que se pide en "Pregunta a responder", entendida con el tema vigente: si se pregunta por la corriente del diferencial, no respondas con la protección del empalme; si se pregunta qué cambia en un baño, responde con las exigencias propias de los baños y no con la regla general.
+puntos: de 1 a 4. El primero responde lo que se preguntó, con el dato concreto (valor, sección, distancia, tipo de protección) aplicado al caso de la ficha. Los demás, solo si aportan una condición o excepción que le sirve a ESTE caso; no repitas lo que ya está en la memoria ni agregues reglas de otros temas. Cada punto es una o dos frases completas, sin títulos ni negritas, y lleva:
+- n: el número del extracto que lo respalda;
+- numeral: el número del punto o artículo tal como aparece escrito dentro de ese extracto (por ejemplo "5.4.2" o "Artículo 12"); si no lo ves escrito, "";
+- textual: una copia EXACTA de 8 a 40 palabras seguidas de ese extracto que respalda el punto, sin cambiar ni una letra. Si el dato está en una tabla, copia la fila tal como aparece.
+Nunca pongas como punto una fila de tabla suelta ni un trozo de frase: redacta la respuesta.
+Cada punto conserva el sujeto de la norma: si el extracto dice "todo circuito de alumbrado", el punto habla de los circuitos, no del alimentador ni del tablero; si lo exige al instalador, no lo atribuyas al propietario.
+Si recibes un bloque "Cálculo hecho por el sistema", el cálculo ya está hecho: usa esos números tal cual, no los recalcules. Tu trabajo es citar el límite o el mínimo que fija la norma en los extractos (caída de tensión máxima, sección mínima, factor sobre la corriente) y decir con qué resultado del cálculo se cumple. Que los extractos no traigan la fórmula no es motivo para sin_respaldo.
+Si la norma no da el número que se pide pero sí la regla para obtenerlo (por ejemplo, cómo se determina la cantidad de centros de un circuito y la potencia que se asigna a cada enchufe), responde con esa regla y sus valores.
+Si la pregunta abre un contexto nuevo (baño, piscina, intemperie), el primer punto dice si la regla que se venía conversando cambia o no, y los siguientes dan las exigencias propias de ese contexto que cambian la instalación (zonas o volúmenes, qué se puede instalar, protecciones).
+aviso: vacío, salvo que la respuesta dependa de un dato que falta o que los extractos no alcancen para una parte; ahí dilo en una frase.
+buscar_mas: si un extracto remite a otra sección o pliego que no recibiste y la necesitas para responder (por ejemplo "según la sección 6 del RIC N°11"), o falta un dato que seguramente está en otra parte de la norma, escribe UNA búsqueda corta para traerlo. Si no hace falta, "".
+sin_respaldo: true solo si ningún extracto trata el tema preguntado; en ese caso puntos vacío y en aviso di que no está en las normas cargadas o qué norma habría que revisar. No inventes valores.
+memoria: una línea que resuma este turno para recordarlo después: qué se preguntó y qué se respondió, con la norma y el punto.
+sugerencias: 2 o 3 preguntas de seguimiento cortas, como las haría un maestro.`;
+
+// Segundo revisor, en paralelo y sin ver la pregunta: solo mira si el extracto dice lo que afirma el punto.
+// De él se usa una señal: cuando el extracto da el dato como condición de una excepción y el punto lo presenta
+// como regla general. Es el error que al revisor principal más se le pasa (medido con eval/revisor.mjs).
+// El mismo esquema, con la lista limitada a un veredicto por punto: sin eso el modelo a veces devuelve
+// varios veredictos para un punto (uno por cada inciso del extracto) y no se sabe cuál vale.
+const justo = (schema, campo, n) => ({
+  ...schema,
+  properties: {...schema.properties, [campo]: {...schema.properties[campo], minItems: n, maxItems: n}},
+});
+const FIEL_SCHEMA = S.obj({
+  puntos: S.arr(
+    S.obj({
+      i: S.int,
+      donde: S.str,
+      clase: S.en(['regla', 'condicion', 'no_esta']),
+      valores: S.en(['iguales', 'cambiados', 'agregados']),
+      fiel: S.en(['si', 'no']),
+      motivo: S.str,
+    }),
+    4
+  ),
+});
+const FIEL_SYS = `Eres revisor de fidelidad. Recibes afirmaciones sobre normativa eléctrica chilena, cada una con el extracto de norma que cita. No te importa qué se preguntó ni si la afirmación es útil: solo si el extracto dice eso. No le debes nada a quien la escribió.
+Para cada afirmación (i = su número), en este orden:
+- donde: copia del extracto las primeras palabras de la frase o numeral que contiene el dato. Si esa frase cuelga de un encabezado anterior ("Se exceptúan…", "Se eximirán… los que cumplan una de las siguientes condiciones:", "En el volumen 2…", el título de una tabla), copia primero ese encabezado. Máximo 40 palabras. Si el dato no está en el extracto, "".
+- clase: regla = el extracto lo da como exigencia, prohibición o permiso directo; condicion = lo da como requisito para acogerse a una excepción, exención o alternativa; no_esta = el extracto no trae ese dato.
+- valores: iguales = todos los números, unidades y calificativos de la afirmación están en el extracto, con el mismo sentido y para el mismo sujeto; cambiados = algún valor difiere, el sentido está invertido (permite ↔ prohíbe, mínimo ↔ máximo) o el valor se atribuye a otro sujeto (el límite del total dicho como límite del alimentador); agregados = la afirmación trae un número, tipo, modelo o exigencia que el extracto no trae.
+- fiel: si = la afirmación dice lo mismo que el extracto y para el mismo caso; no = cualquier otra cosa. Si clase es condicion, solo es fiel cuando la afirmación dice expresamente de qué excepción, exención o alternativa es requisito; presentarla como un límite o una obligación general es no.
+- motivo: una frase corta si fiel = no; si no, "".
+Si recibes un bloque "Cálculo hecho por el sistema", sus números son correctos y no cuentan como agregados: lo que debe estar en el extracto es la regla o el límite con que se comparan. Resumir sin cambiar el sentido es fiel.`;
+
+const JUEZ_SCHEMA = S.obj({
+  pide: S.str,
+  veredictos: S.arr(
+    S.obj({
+      i: S.int,
+      caso_del_extracto: S.str,
+      respalda: S.en(['si', 'parcial', 'no']),
+      aplica: S.en(['si', 'dudoso', 'no']),
+      motivo: S.str,
+    }),
+    4
+  ),
+  responde: S.en(['si', 'parcial', 'no']),
+});
+const JUEZ_SYS = `Eres revisor de respuestas sobre normativa eléctrica chilena. No conoces al que respondió y no le debes nada: tu trabajo es encontrar errores antes de que lleguen a un instalador.
+Recibes la pregunta, el tema de la conversación, la ficha del caso y los puntos de la respuesta, cada uno con el extracto de norma que cita. La pregunta puede ser la continuación de una conversación ("¿y si el tramo tiene 80 metros?"): entiéndela con el tema y la ficha. Si recibes un bloque "Cálculo hecho por el sistema", esos números son correctos y no necesitan estar en el extracto; lo que debe estar en el extracto es la regla o el límite con que se comparan.
+pide: en una frase, de qué equipo o situación se pregunta y qué se quiere saber, sin agregar nada que la pregunta no diga. Si la pregunta es abierta ("¿qué protección lleva…?"), lo que se pide es abierto: cualquier exigencia de la norma sobre ese equipo en esa situación la contesta.
+Para cada punto (i = su número), en este orden:
+- caso_del_extracto: antes de juzgar, escribe en una frase PARA QUÉ CASO da el extracto el dato que usa el punto, leyendo la frase completa desde su encabezado. Formas típicas: "regla general para …"; "condición para acogerse a una excepción o exención de …"; "regla de una zona o parte de … (volumen 2, tramo subterráneo)"; "regla de otro tipo de instalación o de otro equipo: …".
+- respalda: si = el extracto dice eso mismo, con los mismos valores y para el mismo caso; parcial = el fondo está en el extracto pero el punto lo redacta con una imprecisión menor que no cambia lo que hay que hacer; no = el extracto no lo dice, o el punto cambia un valor, agrega una exigencia que el extracto no trae (un tipo, una marca, un número), invierte el sentido, o presenta como regla general algo que el extracto da solo como condición de una excepción, de una exención o de un caso particular ("se eximirán… los sistemas que…", "en el caso de…"). Lee la frase completa del extracto, desde su encabezado, antes de decidir.
+- aplica: compara caso_del_extracto con pide. si = el extracto trata la misma situación que se pregunta (mismo tipo de instalación, equipo y ámbito); dudoso = podría aplicar pero falta un dato; no = es de otra situación (por ejemplo una regla de cercos eléctricos, piscinas, locales comerciales o líneas de empresas usada para responder otra cosa).
+- motivo: una frase corta, solo si respalda o aplica no es "si"; si no, "".
+responde: compara los puntos válidos con pide. si = dan lo que se pide, del equipo que se pide; parcial = contestan una parte (una zona, un caso de varios, una de las exigencias); no = hablan de otro asunto o de otro equipo que el preguntado. Una respuesta incompleta es parcial, no "no".
+Sé estricto con "aplica": un dato correcto de una situación distinta es un error peligroso.`;
+
 export default {
   async fetch(req, env) {
     const origin = req.headers.get('Origin') || '';
@@ -710,8 +912,145 @@ Responde estado: cumple, no_cumple o no_se_ve. no_cumple solo si el acercamiento
         const {model, out} = await smart(env, msgs, 1400, 0.0);
         return json({ok: true, model, ms: Date.now() - t0, result: parseJSON(out)}, 200, origin);
       }
+      if (path === '/plan') {
+        const turnos = (Array.isArray(b.turnos) ? b.turnos : [])
+          .slice(-3)
+          .map((h) => `Persona: ${clip(h.q, 300)}\nAsistente: ${clip(h.a, 400)}`)
+          .join('\n');
+        const result = await schemaCall(
+          env,
+          [
+            {role: 'system', content: PLAN_SYS},
+            {
+              role: 'user',
+              content: `Ficha del caso: ${fichaTxt(b.ficha)}\nTema vigente: ${clip(b.tema, 160) || 'ninguno'}\nMemoria:\n${memoriaTxt(b.memoria)}\n\nÚltimos turnos:\n${turnos || 'ninguno'}${b.pendiente ? `\n\nPregunta pendiente (el asistente pidió un dato para poder responderla): ${clip(b.pendiente, 400)}` : ''}\n\nÚltimo mensaje: ${clip(b.mensaje, 600)}`,
+            },
+          ],
+          PLAN_SCHEMA,
+          900,
+          false,
+          0,
+          30000
+        );
+        return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
+      if (path === '/redacta') {
+        const ext = extractos(await corpus(env, b.ids), b.ids);
+        if (!ext.length) return json({error: 'faltan los fragmentos de la consulta'}, 400, origin);
+        const calc = b.calculo
+          ? `\n\nCálculo hecho por el sistema (no lo recalcules):\n${clip(b.calculo, 900)}`
+          : '';
+        const rechazo = (Array.isArray(b.rechazo) ? b.rechazo : [])
+          .slice(0, 4)
+          .map((x) => `- "${clip(x.texto, 200)}" → ${clip(x.motivo, 200)}`)
+          .join('\n');
+        const result = await schemaCall(
+          env,
+          [
+            {role: 'system', content: RED_SYS},
+            {
+              role: 'user',
+              content: `Ficha del caso: ${fichaTxt(b.ficha)}\nTema: ${clip(b.tema, 160)}\nMemoria:\n${memoriaTxt(b.memoria)}\n\nExtractos:\n${ext.join('\n\n')}${calc}${rechazo ? `\n\nUn revisor rechazó tu respuesta anterior:\n${rechazo}\nNo repitas esos puntos con el mismo extracto. Busca entre los extractos el que trata exactamente lo preguntado y cita ese; si no lo hay, sin_respaldo.` : ''}${b.segunda ? '\n\nUna primera lectura no encontró respaldo. Lee de nuevo los extractos: si alguno da la regla (aunque sea general) de la que sale la respuesta, responde con ella; si de verdad ninguno trata el tema, sin_respaldo.' : ''}\n\nPregunta a responder: ${clip(b.pregunta || b.mensaje, 700)}`,
+            },
+          ],
+          RED_SCHEMA,
+          1500,
+          false,
+          0,
+          30000
+        );
+        return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
+      if (path === '/juez') {
+        const puntos = (Array.isArray(b.puntos) ? b.puntos : []).slice(0, 4);
+        const C = await corpus(
+          env,
+          puntos.map((p) => p.id)
+        );
+        const txt = puntos
+          .map((p, k) => {
+            const e = extractos(C, [p.id], 1)[0] || '(sin extracto)';
+            return `Punto ${k + 1}: ${clip(p.texto, 500)}\nExtracto citado: ${e.replace(/^\[1\] /, '')}`;
+          })
+          .join('\n\n');
+        if (!txt) return json({error: 'faltan los puntos a revisar'}, 400, origin);
+        const result = await schemaCall(
+          env,
+          [
+            {role: 'system', content: JUEZ_SYS},
+            {
+              role: 'user',
+              content: `Pregunta: ${clip(b.pregunta || b.mensaje, 700)}\nTema: ${clip(b.tema, 160)}\nFicha del caso: ${fichaTxt(b.ficha)}${b.calculo ? `\n\nCálculo hecho por el sistema:\n${clip(b.calculo, 900)}` : ''}\n\n${txt}`,
+            },
+          ],
+          justo(JUEZ_SCHEMA, 'veredictos', puntos.length),
+          900,
+          false,
+          0,
+          30000
+        );
+        const calcTxt = b.calculo ? `\n\nCálculo hecho por el sistema:\n${clip(b.calculo, 900)}` : '';
+        // Uno después del otro: con la cuota al límite, la API rechaza la segunda de dos llamadas simultáneas
+        // y el segundo revisor desaparecía justo cuando hay más carga. schemaCall ya reintenta una vez.
+        const fiel = await schemaCall(
+          env,
+          [
+            {role: 'system', content: FIEL_SYS},
+            {role: 'user', content: `${txt.replace(/^Punto /gm, 'Afirmación ')}${calcTxt}`},
+          ],
+          justo(FIEL_SCHEMA, 'puntos', puntos.length),
+          900,
+          false,
+          0,
+          30000
+        ).catch(() => null); // si el segundo revisor falla queda el principal, y se avisa
+        // El modelo a veces numera mal los veredictos (tres con i = 1, o dos para un mismo punto). Para cada punto
+        // se toman los que traen su número; si no hay ninguno y la lista tiene el largo justo, el de su posición.
+        // Si hay varios para un punto vale el más severo; un punto sin veredicto queda sin revisar y no se muestra.
+        const peor = (a, b, orden) => (orden.indexOf(a) >= orden.indexOf(b) ? a : b);
+        const enOrden = (lista) => {
+          const l = Array.isArray(lista) ? lista : [];
+          return puntos.map((_, k) => {
+            const g = l.filter((x) => x.i === k + 1);
+            if (!g.length) return l.length === puntos.length ? l[k] : null;
+            return g.reduce((a, x) => ({
+              ...a,
+              ...(a.respalda !== undefined && {
+                respalda: peor(a.respalda, x.respalda, ['si', 'parcial', 'no']),
+              }),
+              ...(a.aplica !== undefined && {aplica: peor(a.aplica, x.aplica, ['si', 'dudoso', 'no'])}),
+              ...(a.fiel !== undefined && {fiel: peor(a.fiel, x.fiel, ['si', 'no'])}),
+              motivo: [a.motivo, x.motivo].filter(Boolean).join(' · '),
+            }));
+          });
+        };
+        const V = enOrden(result.veredictos),
+          F = enOrden(fiel ? fiel.puntos : []);
+        result.segundo_revisor = !!fiel;
+        result.veredictos = puntos.map((_, k) => {
+          const v = V[k]
+            ? {...V[k], i: k + 1}
+            : {i: k + 1, respalda: 'no', aplica: 'dudoso', motivo: 'sin revisar'};
+          const f = F[k];
+          if (!f) return v;
+          v.donde = f.donde;
+          v.clase = f.clase;
+          const fuera =
+            f.clase === 'condicion' && f.fiel === 'no'
+              ? f.motivo || 'el extracto lo da como condición de una excepción, no como regla general'
+              : f.clase === 'no_esta'
+                ? f.motivo || 'el dato no está en el extracto citado'
+                : '';
+          if (fuera) {
+            v.respalda = 'no';
+            v.motivo = [v.motivo, fuera].filter(Boolean).join(' · ');
+          }
+          return v;
+        });
+        return json({ok: true, model: VLM, ms: Date.now() - t0, result}, 200, origin);
+      }
       if (path === '/embed') {
-        const texts = (Array.isArray(b.texts) ? b.texts : [b.text]).slice(0, 4).map((t) => clip(t, 1000));
+        const texts = (Array.isArray(b.texts) ? b.texts : [b.text]).slice(0, 6).map((t) => clip(t, 1000));
         const emb = () =>
           nv(env, '/embeddings', {
             model: EMB,
