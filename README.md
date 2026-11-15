@@ -36,7 +36,7 @@ Cada ruta arma su propio prompt y elige su modelo en el servidor; el navegador s
 | `POST /critica` | Supervisor normativo | Nemotron Super VL | pares hallazgo–artículo → si el artículo lo exige de verdad |
 | `POST /reformula` | [Consulta eléctrica](https://github.com/JSNN15/consulta-electrica) | Nemotron Super | conversación + pregunta → consulta de búsqueda autónoma |
 | `POST /responde` | Consulta eléctrica | Nemotron Super | pregunta + 8 fragmentos → puntos con fragmento y cita textual |
-| `POST /orienta` | [Portafolio](https://jsnn15.github.io/) | Nemotron Super VL | problema de operación → qué prototipo sirve, cuál a medias o ninguno, con su ficha |
+| `POST /orienta` | [Portafolio](https://jsnn15.github.io/) | Nemotron Ultra 550B, Super VL de cobertura, Bolt de respaldo | problema de operación → qué prototipo sirve, cuál a medias o ninguno, con su ficha |
 | `POST /pedido` | Portafolio | sin modelo | caso + contacto + consentimiento → una fila en D1 (tope diario) |
 
 ## Defensas
@@ -96,7 +96,8 @@ NVIDIA_API_KEY=nvapi-... node dev.mjs    # escucha en :8787
 | `wrangler.toml` | Configuración de despliegue (sin la clave). |
 | `eval/orientador.json` | 32 casos con el veredicto aceptable de cada uno. |
 | `eval/orientador.mjs` | Los corre contra el intermediario y cuenta aciertos, casos donde ofrece de más y pedidos que pierde. |
-| `eval/orientador.res.json` | Última corrida: 31 de 32, sin ofrecer de más y sin perder pedidos. |
+| `eval/orientador.res.json` | Última corrida: 32 de 32, sin ofrecer de más y sin perder pedidos. |
+| `eval/latencia.md` | Latencia medida por modelo y el efecto de la carrera de llamadas. |
 
 ---
 

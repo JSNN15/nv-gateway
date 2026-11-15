@@ -36,7 +36,7 @@ Each route builds its own prompt and picks its model server-side; the browser on
 | `POST /critica` | Compliance supervisor | Nemotron Super VL | finding–article pairs → whether the article truly requires it |
 | `POST /reformula` | [Electrical code chat](https://github.com/JSNN15/consulta-electrica) | Nemotron Super | conversation + question → standalone search query |
 | `POST /responde` | Electrical code chat | Nemotron Super | question + 8 chunks → points with chunk number and verbatim quote |
-| `POST /orienta` | [Portfolio](https://jsnn15.github.io/) | Nemotron Super VL | operational problem → which prototype fits, which one partly, or none, with a short brief |
+| `POST /orienta` | [Portfolio](https://jsnn15.github.io/) | Nemotron Ultra 550B, Super VL as hedge, Bolt as fallback | operational problem → which prototype fits, which one partly, or none, with a short brief |
 | `POST /pedido` | Portfolio | no model | case + contact + consent → one row in D1 (daily cap) |
 
 ## Defenses
@@ -91,7 +91,8 @@ NVIDIA_API_KEY=nvapi-... node dev.mjs    # listens on :8787
 | `wrangler.toml` | Deploy config (no key). |
 | `eval/orientador.json` | 32 cases with the acceptable verdict for each. |
 | `eval/orientador.mjs` | Runs them against the gateway and counts hits, oversold cases and lost requests. |
-| `eval/orientador.res.json` | Latest run: 31 of 32, no overselling, no lost requests. |
+| `eval/orientador.res.json` | Latest run: 32 of 32, no overselling, no lost requests. |
+| `eval/latencia.md` | Measured latency per model and the effect of racing calls (in Spanish). |
 
 ---
 
