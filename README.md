@@ -38,6 +38,7 @@ Cada ruta arma su propio prompt y elige su modelo en el servidor; el navegador s
 | `POST /responde` | Consulta eléctrica | Nemotron Super | pregunta + 8 fragmentos → puntos con fragmento y cita textual |
 | `POST /orienta` | [Portafolio](https://jsnn15.github.io/) | Nemotron Ultra 550B, Super VL de cobertura, Bolt de respaldo | problema de operación → qué prototipo sirve, cuál a medias o ninguno, con su ficha |
 | `POST /pedido` | Portafolio | sin modelo | caso + contacto + consentimiento → una fila en D1 (tope diario) |
+| `POST /actividad` | Portafolio | sin modelo | nada → usos por herramienta de los últimos 7 días (solo totales) |
 
 ## Defensas
 
@@ -94,12 +95,12 @@ NVIDIA_API_KEY=nvapi-... node dev.mjs    # escucha en :8787
 | `worker.js` | El Worker completo: rutas, prompts, defensas y respaldo. |
 | `dev.mjs` | Servidor local que envuelve `worker.fetch` para desarrollo. |
 | `wrangler.toml` | Configuración de despliegue (sin la clave). |
-| `eval/orientador.json` | 32 casos con el veredicto aceptable de cada uno. |
+| `eval/orientador.json` | 35 casos con el veredicto aceptable de cada uno. |
 | `eval/orientador.mjs` | Los corre contra el intermediario y cuenta aciertos, casos donde ofrece de más y pedidos que pierde. |
-| `eval/orientador.res.json` | Última corrida: 32 de 32, sin ofrecer de más y sin perder pedidos. |
+| `eval/orientador.res.json` | Última corrida: 34 de 35, sin ofrecer de más y sin perder pedidos. |
 | `eval/latencia.md` | Latencia medida por modelo y el efecto de la carrera de llamadas. |
 
 ---
 
 <sub>Proyecto personal de **Julián Neira Nova**, ingeniero eléctrico con 10 años en faena · Servicio y Soluciones Tecnológicas DelaCruz SpA. Nada de lo publicado proviene de clientes ni de empleadores.
-[Portafolio](https://jsnn15.github.io/) · [LinkedIn](https://www.linkedin.com/in/julian-neira-nova/) · [Todas las máquinas](https://github.com/JSNN15)</sub>
+[Portafolio](https://jsnn15.github.io/) · [LinkedIn](https://www.linkedin.com/in/julian-neira-nova/) · [Todas las herramientas](https://github.com/JSNN15)</sub>

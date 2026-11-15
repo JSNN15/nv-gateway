@@ -18,7 +18,7 @@ const TOPE_DIA = 1500; // consultas en vivo por día, sumando todas las máquina
 const RIC_URL = 'https://jsnn15.github.io/normativa/s/ric.json';
 const CORPUS_URL = 'https://jsnn15.github.io/consulta-electrica/s/corpus.json';
 const RUTAS = new Set(
-  'inspect epp gauge turno embed ric supervisa cita identifica confirma revisa verifica critica reformula responde plan redacta juez orienta pedido'
+  'inspect epp gauge turno embed ric supervisa cita identifica confirma revisa verifica critica reformula responde plan redacta juez orienta pedido actividad'
     .split(' ')
     .map((r) => '/' + r)
 );
@@ -115,6 +115,54 @@ const topeDiario = async (env) => {
       return false;
     }
   }
+};
+
+// Actividad real, para mostrarla en la portada: cuántas veces se usó cada herramienta por día. Solo fecha,
+// herramienta y total: ni IP, ni sesión, ni contenido. Cuenta la ruta con que parte cada uso.
+const ENTRADA = {
+  '/identifica': 'SN',
+  '/plan': 'CE',
+  '/turno': 'PV',
+  '/epp': 'VE',
+  '/gauge': 'LI',
+  '/orienta': 'OR',
+};
+const ACT_DEV = new Map();
+const anotarUso = async (env, path) => {
+  const h = ENTRADA[path];
+  if (!h) return;
+  const dia = new Date().toISOString().slice(0, 10);
+  if (!env.DB) return void ACT_DEV.set(dia + h, {dia, h, n: ((ACT_DEV.get(dia + h) || {}).n || 0) + 1});
+  const sumar = () =>
+    env.DB.prepare('INSERT INTO actividad (dia, h, n) VALUES (?1, ?2, 1) ON CONFLICT(dia, h) DO UPDATE SET n = n + 1')
+      .bind(dia, h)
+      .run();
+  try {
+    await sumar();
+  } catch {
+    try {
+      await env.DB.prepare(
+        'CREATE TABLE IF NOT EXISTS actividad (dia TEXT NOT NULL, h TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (dia, h))'
+      ).run();
+      await sumar();
+    } catch {}
+  }
+};
+const leerActividad = async (env, dias = 7) => {
+  const desde = new Date(Date.now() - (dias - 1) * 86400000).toISOString().slice(0, 10);
+  let filas = [];
+  if (!env.DB) filas = [...ACT_DEV.values()].filter((x) => x.dia >= desde);
+  else
+    try {
+      filas = (await env.DB.prepare('SELECT dia, h, n FROM actividad WHERE dia >= ?1').bind(desde).all()).results || [];
+    } catch {}
+  const hoy = new Date().toISOString().slice(0, 10);
+  const out = {dias, desde, hoy: {}, total: {}};
+  for (const f of filas) {
+    out.total[f.h] = (out.total[f.h] || 0) + f.n;
+    if (f.dia === hoy) out.hoy[f.h] = f.n;
+  }
+  return out;
 };
 
 // Pedidos que deja el orientador del portafolio: el caso de un visitante y su contacto, solo con su consentimiento.
@@ -808,6 +856,11 @@ const CATALOGO = [
     'Selector IA de fruta',
     'En una línea de selección decide si cada fruta va o sale y comanda el expulsor, con registro por lote.',
   ],
+  [
+    'CP',
+    'Cuaderno de planta',
+    'Abre en el navegador un archivo de datos de proceso (CSV o Excel), sin subirlo y sin licencias: revisa la calidad de los datos, los limpia con una receta que se repite cada mes, muestra series y correlaciones, prueba si las variables de proceso permiten estimar un resultado de laboratorio (una ley, una humedad) antes de que llegue el análisis, y vigila datos nuevos. Trabaja con un archivo a la vez. No se conecta en línea a la planta ni al historiador, no optimiza ni controla el proceso, no predice fallas de equipos y no lee órdenes de trabajo ni texto.',
+  ],
 ];
 // Orientador: parte el modelo que casi no hace cola; al segundo entra el grande y, si a los 6 s nadie terminó,
 // el más estable. Gana el primero que termina; si es el de respaldo, espera 3 s más por uno de los finos.
@@ -1001,12 +1054,16 @@ export default {
       }
       return json({ok: true, s: await sesionNueva(env, red(req)), min: SESION_MIN}, 200, origin);
     }
+    // la actividad se consulta sin gastar el tope del día ni llamar a ningún modelo
+    if (path === '/actividad') return json({ok: true, ...(await leerActividad(env))}, 200, origin);
     if (await topeDiario(env))
       return json(
         {error: 'Se alcanzó el tope diario de consultas en vivo. Los ejemplos guardados siguen funcionando.'},
         429,
         origin
       );
+    const anotado = anotarUso(env, path);
+    if (ctx && ctx.waitUntil) ctx.waitUntil(anotado);
     const t0 = Date.now();
     try {
       if (path === '/inspect') {
