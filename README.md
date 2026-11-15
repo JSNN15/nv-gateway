@@ -39,6 +39,8 @@ Cada ruta arma su propio prompt y elige su modelo en el servidor; el navegador s
 | `POST /orienta` | [Portafolio](https://jsnn15.github.io/) | Nemotron Ultra 550B, Super VL de cobertura, Bolt de respaldo | problema de operación → qué prototipo sirve, cuál a medias o ninguno, con su ficha |
 | `POST /pedido` | Portafolio | sin modelo | caso + contacto + consentimiento → una fila en D1 (tope diario) |
 | `POST /actividad` | Portafolio | sin modelo | nada → usos por herramienta de los últimos 7 días (solo totales) |
+| `POST /simple` | Consulta eléctrica | Nemotron Ultra 550B, Super VL de cobertura | respuesta ya comprobada → la misma respuesta en palabras simples, con términos explicados |
+| `POST /cuaderno` | [Cuaderno de planta](https://jsnn15.github.io/cuaderno/) | Nemotron Ultra 550B, Super VL de cobertura | pedido + nombres y estadísticas de las columnas (nunca las filas) → pasos de limpieza propuestos |
 
 ## Defensas
 

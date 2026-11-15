@@ -39,6 +39,8 @@ Each route builds its own prompt and picks its model server-side; the browser on
 | `POST /orienta` | [Portfolio](https://jsnn15.github.io/) | Nemotron Ultra 550B, Super VL as hedge, Bolt as fallback | operational problem → which prototype fits, which one partly, or none, with a short brief |
 | `POST /pedido` | Portfolio | no model | case + contact + consent → one row in D1 (daily cap) |
 | `POST /actividad` | Portfolio | no model | nothing → uses per tool over the last 7 days (totals only) |
+| `POST /simple` | Electrical code chat | Nemotron Ultra 550B, Super VL as hedge | checked answer → the same answer in plain words, with terms explained |
+| `POST /cuaderno` | [Plant notebook](https://jsnn15.github.io/cuaderno/) | Nemotron Ultra 550B, Super VL as hedge | request + column names and statistics (never the rows) → proposed cleaning steps |
 
 ## Defenses
 

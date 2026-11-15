@@ -18,7 +18,7 @@ const TOPE_DIA = 1500; // consultas en vivo por día, sumando todas las máquina
 const RIC_URL = 'https://jsnn15.github.io/normativa/s/ric.json';
 const CORPUS_URL = 'https://jsnn15.github.io/consulta-electrica/s/corpus.json';
 const RUTAS = new Set(
-  'inspect epp gauge turno embed ric supervisa cita identifica confirma revisa verifica critica reformula responde plan redacta juez orienta pedido actividad'
+  'inspect epp gauge turno embed ric supervisa cita identifica confirma revisa verifica critica reformula responde plan redacta juez orienta pedido actividad simple cuaderno'
     .split(' ')
     .map((r) => '/' + r)
 );
@@ -126,6 +126,7 @@ const ENTRADA = {
   '/epp': 'VE',
   '/gauge': 'LI',
   '/orienta': 'OR',
+  '/cuaderno': 'CP',
 };
 const ACT_DEV = new Map();
 const anotarUso = async (env, path) => {
@@ -896,6 +897,90 @@ pregunta: solo para aclarar; en los demás "".
 ficha: el caso resumido con lo que dijo el visitante, sin inventar nada: problema (qué pasa hoy), senal (qué datos, fotos, video o documentos dice tener; "" si no lo dice), decision (qué necesita saber o decidir; "" si no lo dice), industria ("" si no lo dice).
 No inventes prototipos, cifras, plazos ni precios, y no prometas que Julián lo va a construir.`;
 
+// Una llamada con esquema estricto y carrera de modelos; un reintento si la salida no trae un JSON válido.
+const conEsquema = async (env, messages, schema, max_tokens, ms, plan) => {
+  let d;
+  for (let k = 0; k < 2; k++) {
+    d = await nv(
+      env,
+      '/chat/completions',
+      {
+        model: plan[0].model,
+        messages,
+        max_tokens: k ? Math.round(max_tokens * 1.5) : max_tokens,
+        temperature: 0,
+        stream: false,
+        chat_template_kwargs: {enable_thinking: false},
+        response_format: {type: 'json_schema', json_schema: {name: 'respuesta', schema, strict: true}},
+      },
+      ms,
+      plan
+    );
+    try {
+      return {result: parseJSON(d.choices[0].message.content || ''), modelo: d.modelo};
+    } catch (e) {
+      if (k) throw e;
+    }
+  }
+};
+const PLAN_TEXTO = [
+  {model: ULTRA, t: 0},
+  {model: VLM, t: 1000},
+];
+// Consulta eléctrica en simple: la misma respuesta, ya comprobada, dicha para alguien sin formación técnica.
+const SIMPLE_SCHEMA = S.obj({
+  explicacion: S.str,
+  terminos: S.arr(S.obj({termino: S.str, significado: S.str}), 4),
+});
+const SIMPLE_SYS = `Reescribes una respuesta sobre normativa eléctrica chilena para una persona sin formación técnica: el dueño de una casa, la administradora de un local. Recibes la pregunta y los puntos de la respuesta, que ya fueron comprobados contra la norma.
+Reglas:
+- Di lo mismo que los puntos, con palabras comunes y frases cortas: de 2 a 5 frases, de tú, en español de Chile.
+- No agregues exigencias, excepciones, números, plazos, causas ni consejos que no estén en los puntos. No quites condiciones.
+- Conserva cada número con su unidad, tal como viene.
+- No nombres normas ni artículos: eso ya está en la respuesta original.
+- terminos: hasta 4 palabras técnicas de los puntos, cada una explicada en menos de 15 palabras y sin agregar exigencias ni números. Si no hay, lista vacía.`;
+
+// Cuaderno de planta: el asistente no ve las filas. Recibe los nombres de las columnas con sus estadísticas y
+// propone pasos de la receta; la página los valida contra las columnas reales y la persona decide si los aplica.
+const CUAD_SCHEMA = S.obj({
+  pasos: S.arr(
+    S.obj({
+      op: S.en(['tiempo', 'ordenar', 'quitar_columnas', 'quitar_filas', 'rango', 'atipicos', 'pegados', 'remuestrear', 'rellenar']),
+      col: S.str,
+      cols: S.arr(S.str, 30),
+      cada: S.str,
+      min: S.str,
+      max: S.str,
+      filas: S.int,
+    }),
+    6
+  ),
+  objetivo: S.str,
+  retraso: S.int,
+  explica: S.str,
+  no_puedo: S.str,
+});
+const CUAD_SYS = `Eres el asistente de un cuaderno de análisis de datos de planta. La persona tiene cargada una tabla y pide algo con sus palabras. Tú no ves las filas: solo las columnas con sus estadísticas, los avisos de calidad y la receta actual. Respondes proponiendo pasos de limpieza de este catálogo; la persona decide si los aplica.
+
+Pasos (usa solo estos, con nombres de columna copiados tal cual de la lista):
+- tiempo: fija la columna de fecha. col = esa columna. Si cada marca de tiempo se repite en varias filas, cols = ["repartir"]; si no, cols = [].
+- ordenar: ordena por fecha.
+- quitar_columnas: cols = columnas que sobran.
+- quitar_filas: quita las filas donde falta el dato de col.
+- rango: borra los valores de col fuera de un rango físico. min y max como texto de número ("0", "14"); "" si ese lado no tiene límite.
+- atipicos: borra valores muy lejos del resto. cols = columnas, o ["todas"].
+- pegados: borra tramos donde un sensor repite el mismo valor. cols = columnas; filas = largo mínimo del tramo (30 si no se dice). Nunca sobre columnas de laboratorio, que repiten su valor de forma normal.
+- remuestrear: promedia a un paso fijo. cada = "10 min", "1 h", "4 h", "1 d".
+- rellenar: rellena huecos cortos. cols = columnas o ["todas"]; filas = largo máximo del hueco (3 si no se dice).
+En los campos que un paso no usa: col "", cols [], cada "", min "", max "", filas 0.
+
+objetivo: si la persona dice qué variable quiere estimar, el nombre exacto de esa columna; si no, "".
+retraso: si dice con cuánto retraso llega el laboratorio, ese retraso en filas de la tabla ya limpia (con el paso que quede después de remuestrear); si no lo dice, -1.
+explica: 1 a 3 frases, de tú, en español de Chile: qué propones y por qué, o la respuesta si solo preguntó algo que se contesta con las estadísticas.
+no_puedo: si pide algo que estos pasos no hacen (unir archivos, gráficos especiales, otros modelos, pronósticos), dilo en una frase; si no, "".
+Propón solo lo que la persona pidió: no agregues limpiezas por tu cuenta. La única excepción es fijar la columna de fecha cuando lo pedido la necesita y la receta todavía no la tiene.
+No inventes columnas ni valores. No propongas pasos que ya están en la receta. Si no hace falta ningún paso, pasos = [].`;
+
 const PLAN_SCHEMA = S.obj({
   tipo: S.en(['pregunta', 'dato', 'aclaracion', 'calculo', 'resumen', 'saludo', 'fuera']),
   ficha: S.obj({recinto: S.str, sistema: S.str, tension: S.str, potencia: S.str, otros: S.str}),
@@ -1270,6 +1355,56 @@ Responde estado: cumple, no_cumple o no_se_ve. no_cumple solo si el acercamiento
           200,
           origin
         );
+      }
+      if (path === '/cuaderno') {
+        const cols = (Array.isArray(b.columnas) ? b.columnas : []).slice(0, 80).map((c) => {
+          const o = c && typeof c === 'object' ? c : {};
+          return `- «${clip(o.nombre, 80)}» · ${clip(o.tipo, 12)}${o.tipo === 'num' ? ` · faltan ${clip(o.faltan, 8)} · de ${clip(o.min, 14)} a ${clip(o.max, 14)} (habitual ${clip(o.habitual, 30)}) · cambia cada ${clip(o.cambia, 6)} filas` : ''}`;
+        });
+        const pedido = clip(b.pedido, 500).trim();
+        if (pedido.length < 3 || !cols.length) return json({error: 'falta el pedido o las columnas'}, 400, origin);
+        const lista = (x, n, largo) =>
+          (Array.isArray(x) ? x : [])
+            .slice(0, n)
+            .map((t) => '- ' + clip(t, largo))
+            .join('\n') || '- ninguno';
+        const r = await conEsquema(
+          env,
+          [
+            {role: 'system', content: CUAD_SYS},
+            {
+              role: 'user',
+              content: `Tabla: ${clip(b.filas, 12)} filas. Tiempo: ${clip(b.tiempo, 200) || 'sin columna de fecha'}.\n\nColumnas:\n${cols.join('\n')}\n\nAvisos de calidad:\n${lista(b.avisos, 20, 240)}\n\nReceta actual:\n${lista(b.receta, 12, 160)}\n\nPedido: ${pedido}`,
+            },
+          ],
+          CUAD_SCHEMA,
+          900,
+          20000,
+          PLAN_TEXTO
+        );
+        return json({ok: true, model: r.modelo, ms: Date.now() - t0, result: r.result}, 200, origin);
+      }
+      if (path === '/simple') {
+        const puntos = (Array.isArray(b.puntos) ? b.puntos : [])
+          .slice(0, 8)
+          .map((x) => clip(x, 600).trim())
+          .filter(Boolean);
+        if (!puntos.length) return json({error: 'falta la respuesta que hay que simplificar'}, 400, origin);
+        const r = await conEsquema(
+          env,
+          [
+            {role: 'system', content: SIMPLE_SYS},
+            {
+              role: 'user',
+              content: `Pregunta: ${clip(b.pregunta, 500)}\n\nPuntos de la respuesta:\n${puntos.map((x, i) => `${i + 1}. ${x}`).join('\n')}`,
+            },
+          ],
+          SIMPLE_SCHEMA,
+          700,
+          15000,
+          PLAN_TEXTO
+        );
+        return json({ok: true, model: r.modelo, ms: Date.now() - t0, result: r.result}, 200, origin);
       }
       if (path === '/pedido') {
         const f = b.ficha && typeof b.ficha === 'object' ? b.ficha : {};
