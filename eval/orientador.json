@@ -155,46 +155,55 @@
  {
   "m": "Quiero predecir cuándo va a fallar un molino SAG con los datos de vibración.",
   "tipo": [
-   "no_existe"
+   "no_existe",
+   "parcial"
   ],
   "capacidad": [
-   ""
+   "",
+   "CP"
   ]
  },
  {
   "m": "Necesito optimizar la dosificación de reactivos en flotación con los datos del laboratorio.",
   "tipo": [
+   "parcial",
    "no_existe"
   ],
   "capacidad": [
+   "CP",
    ""
   ]
  },
  {
   "m": "Quiero pronosticar el consumo de energía de la planta para negociar el contrato eléctrico.",
   "tipo": [
-   "no_existe"
+   "no_existe",
+   "parcial"
   ],
   "capacidad": [
-   ""
+   "",
+   "CP"
   ]
  },
  {
   "m": "Tenemos miles de órdenes de trabajo en SAP y queremos saber qué equipos fallan más y por qué.",
   "tipo": [
-   "no_existe"
+   "no_existe",
+   "parcial"
   ],
   "capacidad": [
-   ""
+   "",
+   "CP"
   ]
  },
  {
   "m": "Los metalurgistas analizan todo en Excel y se demoran días en cruzar los datos de la planta.",
   "tipo": [
-   "no_existe"
+   "calza",
+   "parcial"
   ],
   "capacidad": [
-   ""
+   "CP"
   ]
  },
  {
@@ -216,6 +225,37 @@
   "capacidad": [
    "",
    "SN"
+  ]
+ },
+ {
+  "m": "Cada mes limpio a mano en Excel el export de datos de la planta antes de poder hacer los gráficos.",
+  "tipo": [
+   "calza"
+  ],
+  "capacidad": [
+   "CP"
+  ]
+ },
+ {
+  "m": "Quiero saber si con los datos de proceso puedo estimar la ley del concentrado antes de que llegue el laboratorio.",
+  "tipo": [
+   "calza",
+   "parcial"
+  ],
+  "capacidad": [
+   "CP"
+  ]
+ },
+ {
+  "m": "Necesito un tablero conectado en línea al DCS que muestre los indicadores de la planta en tiempo real.",
+  "tipo": [
+   "no_existe",
+   "parcial"
+  ],
+  "capacidad": [
+   "",
+   "CP",
+   "PV"
   ]
  },
  {

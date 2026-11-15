@@ -1,29 +1,29 @@
 {
  "fecha": "2026-11-15",
  "resumen": {
-  "casos": 32,
-  "aciertos": 32,
+  "casos": 35,
+  "aciertos": 34,
   "vende_de_mas": 0,
   "pierde_pedido": 0,
   "promete": 0,
-  "mediana_s": 2.6
+  "mediana_s": 2.4
  },
  "casos": [
   {
    "m": "Se nos rajan las correas y nos damos cuenta cuando ya se cortó. Tenemos cámaras en la planta.",
    "espera": "calza MC",
-   "tipo": "calza",
+   "tipo": "parcial",
    "capacidad": "MC",
-   "pasa": true,
-   "respuesta": "El Monitor de correas detecta grietas en el borde de la correa mientras está en marcha y te avisa la posición en metros desde el empalme, así la cambias antes de que se corte. Funciona con visión local sin nube y se puede conectar a las cámaras que ya tienes.",
+   "pasa": false,
+   "respuesta": "El Monitor de correas detecta grietas en correas en marcha con cámaras y te da la posición desde el empalme, pero no avisa si la correa ya se cortó ni detecta otros daños.",
    "pregunta": "",
    "ficha": {
-    "problema": "Las correas se rajan y la falla se detecta recién cuando la correa se corta.",
-    "senal": "Cámaras instaladas en la planta.",
-    "decision": "Detectar grietas a tiempo para programar el cambio antes de la rotura.",
+    "problema": "Las correas se rajan y se enteran cuando ya se cortaron",
+    "senal": "Tienen cámaras en la planta",
+    "decision": "",
     "industria": ""
    },
-   "ms": 2786,
+   "ms": 6078,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -34,15 +34,15 @@
    "tipo": "calza",
    "capacidad": "LI",
    "pasa": true,
-   "respuesta": "El Lector de instrumentos lee la aguja del manómetro desde una foto y entrega el valor numérico con alarma y registro, así evitas la transcripción manual y los errores de lectura.",
+   "respuesta": "El Lector de instrumentos lee la aguja de un manómetro con una foto, entrega el número y avisa si pasa el límite. Así evitas errores de anotación a mano en cada ronda.",
    "pregunta": "",
    "ficha": {
-    "problema": "Los operadores anotan a mano la presión de los manómetros en cada ronda y cometen errores de transcripción.",
-    "senal": "Fotos de manómetros de aguja en terreno.",
-    "decision": "Obtener el valor numérico automático y registrarlo sin intervención manual.",
+    "problema": "Los operadores anotan a mano la presión de los manómetros en cada ronda y se equivocan.",
+    "senal": "",
+    "decision": "",
     "industria": ""
    },
-   "ms": 2871,
+   "ms": 3147,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -53,15 +53,15 @@
    "tipo": "calza",
    "capacidad": "SN",
    "pasa": true,
-   "respuesta": "El Supervisor normativo revisa tableros eléctricos desde una foto y los verifica punto por punto contra la normativa chilena (RIC, DS 594, DS 132, DS 43). Calza con lo que necesitas: subes la foto del tablero y te entrega el informe de cumplimiento.",
+   "respuesta": "SN · Supervisor normativo revisa tableros eléctricos con una foto y los compara punto por punto contra la norma chilena, citando el artículo del RIC, DS 594, DS 132 o DS 43 que corresponda.",
    "pregunta": "",
    "ficha": {
-    "problema": "Necesita revisar cumplimiento normativo de tableros eléctricos de sus locales",
-    "senal": "Fotos de los tableros eléctricos",
-    "decision": "Saber si cada tablero cumple la norma chilena punto por punto",
+    "problema": "Revisar si los tableros eléctricos de sus locales cumplen la norma",
+    "senal": "fotos de los tableros eléctricos",
+    "decision": "saber si cumplen la norma",
     "industria": ""
    },
-   "ms": 2262,
+   "ms": 4448,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -72,7 +72,7 @@
    "tipo": "calza",
    "capacidad": "CE",
    "pasa": true,
-   "respuesta": "El Consulta eléctrica responde preguntas sobre normativa eléctrica chilena citando la norma y calcula corriente y caída de tensión. Sirve para saber qué sección de cable usar según la SEC.",
+   "respuesta": "El Consulta eléctrica responde preguntas sobre normativa eléctrica chilena citando la frase de la norma y calcula corriente y caída de tensión. Cubre instalaciones interiores, tableros, conductores y protecciones, así que sirve para elegir la sección de cable según la SEC.",
    "pregunta": "",
    "ficha": {
     "problema": "Los maestros preguntan todo el día qué sección de cable usar según la norma de la SEC.",
@@ -80,7 +80,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 5404,
+   "ms": 2827,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -91,15 +91,15 @@
    "tipo": "calza",
    "capacidad": "VE",
    "pasa": true,
-   "respuesta": "El Vigía EPP revisa casco, chaleco y otros EPP en fotos, cámara o video y entrega una matriz de cumplimiento; la sala de control puede ver las cámaras y avisar cuando alguien trabaja sin casco.",
+   "respuesta": "El Vigía EPP revisa fotos, cámaras o video y detecta casco, chaleco y otros elementos de protección, con una matriz de cumplimiento para la sala de control.",
    "pregunta": "",
    "ficha": {
-    "problema": "Necesita verificar con cámaras si los trabajadores ingresan a la faena usando casco y chaleco.",
-    "senal": "Cámaras de video en el acceso a la faena.",
-    "decision": "Detectar incumplimiento de EPP en tiempo real y alertar a sala de control.",
+    "problema": "Quiero saber con las cámaras si la gente entra a la faena con casco y chaleco.",
+    "senal": "Cámaras de la faena.",
+    "decision": "",
     "industria": ""
    },
-   "ms": 1951,
+   "ms": 2380,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -118,7 +118,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 2457,
+   "ms": 2436,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -129,7 +129,7 @@
    "tipo": "calza",
    "capacidad": "PA",
    "pasa": true,
-   "respuesta": "Prama Agent es para eso: equipos de agentes en tu propio servidor, cada tarea con su prueba y solo se integra lo que pasa.",
+   "respuesta": "Prama Agent es para eso: equipos de agentes en tu propio servidor, con un coordinador, donde cada tarea corre su prueba y solo se integra lo que pasa.",
    "pregunta": "",
    "ficha": {
     "problema": "Quieren que agentes de IA hagan tareas de código con sus pruebas",
@@ -137,7 +137,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 2085,
+   "ms": 2054,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -148,15 +148,15 @@
    "tipo": "calza",
    "capacidad": "SF",
    "pasa": true,
-   "respuesta": "El Selector IA de fruta decide si cada fruta sale o se queda en la línea y comanda el expulsor, con registro por lote. Calza con lo que describes: reemplazar la selección manual en tu packing.",
+   "respuesta": "El Selector IA de fruta decide si cada fruta sale o se queda en la línea y comanda el expulsor, con registro por lote. Calza con lo que describes: reemplaza la selección manual en tu packing.",
    "pregunta": "",
    "ficha": {
-    "problema": "En el packing se saca la fruta mala de la línea a mano",
+    "problema": "En el packing se saca la fruta mala de la línea a mano.",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 2798,
+   "ms": 4276,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -167,15 +167,15 @@
    "tipo": "calza",
    "capacidad": "CE",
    "pasa": true,
-   "respuesta": "El prototipo Consulta eléctrica responde eso citando la norma chilena y calcula corriente y caída de tensión para instalaciones interiores y paneles solares conectados a la red.",
+   "respuesta": "El prototipo Consulta eléctrica cubre paneles solares conectados a la red y te dice qué dice la norma chilena, con la cita textual y el cálculo de corriente y caída de tensión. Puedes preguntarle la potencia máxima permitida para tu instalación domiciliaria y te responderá con el artículo correspondiente.",
    "pregunta": "",
    "ficha": {
-    "problema": "¿Hasta qué potencia puedo instalar paneles solares en una casa según la norma chilena?",
+    "problema": "Necesita saber la potencia máxima de paneles solares permitida en una vivienda según la norma chilena",
     "senal": "",
-    "decision": "",
-    "industria": ""
+    "decision": "Conocer el límite normativo para dimensionar la instalación",
+    "industria": "Residencial / Eléctrica"
    },
-   "ms": 3833,
+   "ms": 4810,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -186,7 +186,7 @@
    "tipo": "parcial",
    "capacidad": "SN",
    "pasa": true,
-   "respuesta": "SN · Supervisor normativo revisa con una foto el equipo contra su lista de seguridad y cita la norma chilena, pero no está pensado para bodegas de sustancias peligrosas.",
+   "respuesta": "SN · Supervisor normativo revisa con una foto el equipo contra su lista de seguridad y cita la norma chilena, pero no está pensado para bodegas de sustancias peligrosas ni para listas de inspección de bodegas.",
    "pregunta": "",
    "ficha": {
     "problema": "Inspeccionan bodegas de sustancias peligrosas con una lista en papel.",
@@ -194,7 +194,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 2552,
+   "ms": 2683,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -213,7 +213,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 2859,
+   "ms": 3175,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -221,18 +221,18 @@
   {
    "m": "Necesito leer con una foto los medidores de luz digitales de mis clientes.",
    "espera": "parcial|no_existe LI|SN|",
-   "tipo": "parcial",
-   "capacidad": "LI",
+   "tipo": "no_existe",
+   "capacidad": "",
    "pasa": true,
-   "respuesta": "El Lector de instrumentos lee manómetros y termómetros de aguja con una foto, pero no lee pantallas digitales ni medidores de energía, que es lo que tú necesitas.",
+   "respuesta": "Hoy no hay un prototipo para leer medidores de luz digitales con foto. Puedes dejar el caso para que Julián lo evalúe.",
    "pregunta": "",
    "ficha": {
-    "problema": "Necesita leer medidores de luz digitales de clientes con una foto.",
-    "senal": "Fotos de medidores de luz digitales.",
+    "problema": "Leer medidores de luz digitales con una foto",
+    "senal": "fotos de medidores de luz digitales",
     "decision": "",
     "industria": ""
    },
-   "ms": 2622,
+   "ms": 3539,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -243,7 +243,7 @@
    "tipo": "parcial",
    "capacidad": "MC",
    "pasa": true,
-   "respuesta": "El Monitor de correas detecta grietas en el borde de la correa en marcha y te da la posición en metros desde el empalme, pero no detecta desalineamiento ni polines trabados.",
+   "respuesta": "El Monitor de correas detecta grietas en el borde de la correa en marcha y te da la posición en metros desde el empalme. No detecta desalineamiento ni polines trabados.",
    "pregunta": "",
    "ficha": {
     "problema": "Necesita detectar desalineamiento de la correa y polines trabados.",
@@ -251,7 +251,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 2409,
+   "ms": 2037,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -270,7 +270,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 2131,
+   "ms": 2708,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -289,7 +289,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 3000,
+   "ms": 2995,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -297,113 +297,113 @@
   {
    "m": "Quiero detectar con cámaras si alguien entra a una zona prohibida de la planta.",
    "espera": "parcial|no_existe VE|",
-   "tipo": "parcial",
-   "capacidad": "VE",
+   "tipo": "no_existe",
+   "capacidad": "",
    "pasa": true,
-   "respuesta": "Vigía EPP revisa cámaras en tiempo real y avisa cuando detecta que a alguien le falta el casco, pero hoy no está entrenado para delimitar zonas prohibidas ni alertar por ingreso a ellas.",
+   "respuesta": "Hoy no hay un prototipo para detectar ingreso a zonas prohibidas con cámaras. Puedes dejar el caso para que Julián lo evalúe.",
    "pregunta": "",
    "ficha": {
-    "problema": "Necesita detectar con cámaras si alguien entra a una zona prohibida de la planta.",
-    "senal": "Cámaras de la planta.",
-    "decision": "Alertar cuando una persona ingresa a un área restringida.",
+    "problema": "Detectar con cámaras si alguien entra a una zona prohibida de la planta.",
+    "senal": "",
+    "decision": "",
     "industria": ""
    },
-   "ms": 3153,
+   "ms": 2296,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
   },
   {
    "m": "Quiero predecir cuándo va a fallar un molino SAG con los datos de vibración.",
-   "espera": "no_existe ",
+   "espera": "no_existe|parcial |CP",
    "tipo": "no_existe",
    "capacidad": "",
    "pasa": true,
    "respuesta": "Hoy no hay un prototipo para predecir fallas de molinos SAG con datos de vibración. Puedes dejar el caso para que Julián lo evalúe.",
    "pregunta": "",
    "ficha": {
-    "problema": "Predecir cuándo va a fallar un molino SAG con datos de vibración",
+    "problema": "Predecir cuándo va a fallar un molino SAG con datos de vibración.",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 2201,
+   "ms": 2226,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
   },
   {
    "m": "Necesito optimizar la dosificación de reactivos en flotación con los datos del laboratorio.",
-   "espera": "no_existe ",
+   "espera": "parcial|no_existe CP|",
    "tipo": "no_existe",
    "capacidad": "",
    "pasa": true,
    "respuesta": "Hoy no hay un prototipo para optimizar dosificación de reactivos en flotación con datos de laboratorio. Puedes dejar el caso para que Julián lo evalúe.",
    "pregunta": "",
    "ficha": {
-    "problema": "Necesita optimizar la dosificación de reactivos en flotación usando datos del laboratorio",
+    "problema": "Optimizar la dosificación de reactivos en flotación con los datos del laboratorio",
     "senal": "",
     "decision": "",
-    "industria": "minería"
+    "industria": ""
    },
-   "ms": 2486,
+   "ms": 2095,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
   },
   {
    "m": "Quiero pronosticar el consumo de energía de la planta para negociar el contrato eléctrico.",
-   "espera": "no_existe ",
+   "espera": "no_existe|parcial |CP",
    "tipo": "no_existe",
    "capacidad": "",
    "pasa": true,
-   "respuesta": "Hoy no hay un prototipo para pronosticar consumo de energía. Puedes dejar el caso para que Julián lo evalúe.",
+   "respuesta": "Hoy no hay un prototipo que pronostique el consumo de energía de la planta para negociar contratos eléctricos. Puedes dejar el caso para que Julián lo evalúe.",
    "pregunta": "",
    "ficha": {
-    "problema": "Pronosticar el consumo de energía de la planta para negociar el contrato eléctrico.",
+    "problema": "Necesita pronosticar el consumo de energía de la planta para negociar el contrato eléctrico.",
     "senal": "",
-    "decision": "",
+    "decision": "Negociar el contrato eléctrico con un pronóstico de consumo.",
     "industria": ""
    },
-   "ms": 2299,
+   "ms": 2281,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
   },
   {
    "m": "Tenemos miles de órdenes de trabajo en SAP y queremos saber qué equipos fallan más y por qué.",
-   "espera": "no_existe ",
+   "espera": "no_existe|parcial |CP",
    "tipo": "no_existe",
    "capacidad": "",
    "pasa": true,
-   "respuesta": "Hoy no hay un prototipo que analice órdenes de trabajo de SAP para encontrar patrones de falla. Puedes dejar el caso para que Julián lo evalúe.",
+   "respuesta": "Hoy no hay un prototipo para analizar órdenes de trabajo de SAP y determinar qué equipos fallan más y por qué. Puedes dejar el caso para que Julián lo evalúe.",
    "pregunta": "",
    "ficha": {
-    "problema": "Tienen miles de órdenes de trabajo en SAP y quieren identificar qué equipos fallan más y las causas raíz.",
-    "senal": "Órdenes de trabajo en SAP.",
-    "decision": "Priorizar mantenimiento y entender causas de falla recurrentes.",
+    "problema": "Tienen miles de órdenes de trabajo en SAP y quieren saber qué equipos fallan más y por qué.",
+    "senal": "",
+    "decision": "",
     "industria": ""
    },
-   "ms": 2259,
+   "ms": 3509,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
   },
   {
    "m": "Los metalurgistas analizan todo en Excel y se demoran días en cruzar los datos de la planta.",
-   "espera": "no_existe ",
-   "tipo": "no_existe",
-   "capacidad": "",
+   "espera": "calza|parcial CP",
+   "tipo": "parcial",
+   "capacidad": "CP",
    "pasa": true,
-   "respuesta": "Hoy no hay un prototipo que automatice el cruce masivo de datos de proceso en Excel para metalurgia. Puedes dejar el caso para que Julián lo evalúe.",
+   "respuesta": "El Cuaderno de planta abre CSV o Excel en el navegador, limpia los datos con una receta repetible y busca si las variables de planta estiman un resultado de laboratorio antes del análisis. No cruza varios archivos ni automatiza el trabajo de los metalurgistas en días.",
    "pregunta": "",
    "ficha": {
     "problema": "Los metalurgistas analizan todo en Excel y se demoran días en cruzar los datos de la planta.",
     "senal": "",
     "decision": "",
-    "industria": "minería"
+    "industria": ""
    },
-   "ms": 5504,
+   "ms": 2593,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -415,14 +415,14 @@
    "capacidad": "",
    "pasa": true,
    "respuesta": "",
-   "pregunta": "¿Qué parte del despacho de camiones quieres mejorar?",
+   "pregunta": "¿Qué datos o señales usan hoy para decidir el despacho (GPS, sensores, planilla, radio) y qué falla o retraso quieren reducir?",
    "ficha": {
     "problema": "Quiere mejorar el despacho de camiones en el rajo",
     "senal": "",
     "decision": "",
-    "industria": ""
+    "industria": "minería"
    },
-   "ms": 2383,
+   "ms": 2738,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -433,15 +433,72 @@
    "tipo": "no_existe",
    "capacidad": "",
    "pasa": true,
-   "respuesta": "Hoy no hay un prototipo que inspeccione líneas eléctricas con drones. Puedes dejar el caso para que Julián lo evalúe.",
+   "respuesta": "Hoy no hay un prototipo para revisar líneas eléctricas con dron. Puedes dejar el caso para que Julián lo evalúe.",
    "pregunta": "",
    "ficha": {
-    "problema": "Necesita inspeccionar el estado de las líneas eléctricas de la faena usando drones.",
+    "problema": "Revisar el estado de las líneas eléctricas de la faena con un dron",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 2603,
+   "ms": 2093,
+   "vende_de_mas": false,
+   "pierde_pedido": false,
+   "promete": false
+  },
+  {
+   "m": "Cada mes limpio a mano en Excel el export de datos de la planta antes de poder hacer los gráficos.",
+   "espera": "calza CP",
+   "tipo": "calza",
+   "capacidad": "CP",
+   "pasa": true,
+   "respuesta": "El Cuaderno de planta abre tu CSV o Excel en el navegador, revisa la calidad de los datos y los limpia con una receta que se repite cada mes, sin subir el archivo ni necesitar licencias. Sirve justo para dejar de limpiar a mano antes de graficar.",
+   "pregunta": "",
+   "ficha": {
+    "problema": "Cada mes limpia a mano en Excel el export de datos de la planta antes de poder hacer los gráficos.",
+    "senal": "Export de datos de la planta (CSV o Excel).",
+    "decision": "Automatizar la limpieza mensual para graficar directo.",
+    "industria": ""
+   },
+   "ms": 2099,
+   "vende_de_mas": false,
+   "pierde_pedido": false,
+   "promete": false
+  },
+  {
+   "m": "Quiero saber si con los datos de proceso puedo estimar la ley del concentrado antes de que llegue el laboratorio.",
+   "espera": "calza|parcial CP",
+   "tipo": "calza",
+   "capacidad": "CP",
+   "pasa": true,
+   "respuesta": "El Cuaderno de planta prueba si tus variables de proceso permiten estimar la ley antes de que llegue el análisis de laboratorio, usando un archivo CSV o Excel que tú abres en el navegador sin subirlo. Hace la validación con una receta que se repite cada mes y te muestra series y correlaciones para que veas si sirve. Trabaja con un archivo a la vez y no se conecta en línea al historiador ni a la planta.",
+   "pregunta": "",
+   "ficha": {
+    "problema": "Quiere saber si con los datos de proceso se puede estimar la ley del concentrado antes de que llegue el resultado del laboratorio.",
+    "senal": "",
+    "decision": "Validar si las variables de proceso permiten anticipar la ley.",
+    "industria": ""
+   },
+   "ms": 3953,
+   "vende_de_mas": false,
+   "pierde_pedido": false,
+   "promete": false
+  },
+  {
+   "m": "Necesito un tablero conectado en línea al DCS que muestre los indicadores de la planta en tiempo real.",
+   "espera": "no_existe|parcial |CP|PV",
+   "tipo": "no_existe",
+   "capacidad": "",
+   "pasa": true,
+   "respuesta": "Hoy no hay un prototipo para eso. Puedes dejar el caso para que Julián lo evalúe.",
+   "pregunta": "",
+   "ficha": {
+    "problema": "Necesito un tablero conectado en línea al DCS que muestre los indicadores de la planta en tiempo real.",
+    "senal": "",
+    "decision": "",
+    "industria": ""
+   },
+   "ms": 2174,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -453,14 +510,14 @@
    "capacidad": "",
    "pasa": true,
    "respuesta": "",
-   "pregunta": "¿Qué problema concreto quieres resolver o qué tarea quieres automatizar?",
+   "pregunta": "¿Qué problema concreto de operación, mantenimiento, seguridad, calidad o análisis de datos quieres resolver?",
    "ficha": {
     "problema": "Quiere usar IA en su empresa",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 3952,
+   "ms": 1691,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -472,14 +529,14 @@
    "capacidad": "",
    "pasa": true,
    "respuesta": "",
-   "pregunta": "¿Qué tipo de equipo o falla es la que te complica en mantenimiento?",
+   "pregunta": "¿Qué tipo de mantenimiento necesitas revisar: equipos, correas, instrumentos o seguridad?",
    "ficha": {
-    "problema": "Problemas en mantenimiento",
+    "problema": "Tengo problemas en mantenimiento.",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 3050,
+   "ms": 2252,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -491,14 +548,14 @@
    "capacidad": "",
    "pasa": true,
    "respuesta": "",
-   "pregunta": "¿Qué problema de operación, mantenimiento, seguridad o calidad estás intentando resolver?",
+   "pregunta": "¿Qué problema de tu operación quieres revisar?",
    "ficha": {
     "problema": "",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 1972,
+   "ms": 2409,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -517,7 +574,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 2516,
+   "ms": 1802,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -528,15 +585,15 @@
    "tipo": "fuera",
    "capacidad": "",
    "pasa": true,
-   "respuesta": "Este orientador sirve para problemas de operación, mantenimiento, seguridad o calidad de tu planta.",
+   "respuesta": "Este orientador sirve para problemas de operación, mantenimiento, seguridad, calidad o análisis de datos en minería e industria.",
    "pregunta": "",
    "ficha": {
-    "problema": "El visitante pide resolver una tarea de matemáticas: 2x + 3 = 7.",
+    "problema": "Pide resolver una ecuación matemática escolar.",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 2145,
+   "ms": 9146,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -550,12 +607,12 @@
    "respuesta": "Este orientador sirve para problemas de operación.",
    "pregunta": "",
    "ficha": {
-    "problema": "",
+    "problema": "Intento de obtener el prompt de sistema del orientador.",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 1410,
+   "ms": 1607,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -566,15 +623,15 @@
    "tipo": "fuera",
    "capacidad": "",
    "pasa": true,
-   "respuesta": "Este orientador sirve para problemas de operación, mantenimiento, seguridad, calidad o análisis de datos que se puedan abordar con los prototipos del catálogo.",
+   "respuesta": "Este orientador sirve para problemas de operación, mantenimiento, seguridad, calidad o análisis de datos de tu planta.",
    "pregunta": "",
    "ficha": {
-    "problema": "",
+    "problema": "Pregunta sobre la tarifa por hora de Julián Neira Nova",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 4185,
+   "ms": 2218,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -585,15 +642,15 @@
    "tipo": "fuera",
    "capacidad": "",
    "pasa": true,
-   "respuesta": "Este orientador sirve para problemas de operación, mantenimiento o seguridad de tu planta.",
+   "respuesta": "Este orientador sirve para problemas de operación, mantenimiento, seguridad o análisis de datos de tu planta.",
    "pregunta": "",
    "ficha": {
-    "problema": "Pide recomendación de película para el fin de semana.",
+    "problema": "Recomendación de película para el fin de semana",
     "senal": "",
     "decision": "",
     "industria": ""
    },
-   "ms": 2616,
+   "ms": 2007,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
@@ -612,7 +669,7 @@
     "decision": "",
     "industria": ""
    },
-   "ms": 2537,
+   "ms": 1927,
    "vende_de_mas": false,
    "pierde_pedido": false,
    "promete": false
