@@ -1584,18 +1584,41 @@ Responde estado: cumple, no_cumple o no_se_ve. no_cumple solo si el acercamiento
       }
       if (path === '/embed') {
         const texts = (Array.isArray(b.texts) ? b.texts : [b.text]).slice(0, 6).map((t) => clip(t, 1000));
-        const emb = () =>
+        const emb = (input) =>
           nv(env, '/embeddings', {
             model: EMB,
-            input: texts,
+            input,
             input_type: b.type === 'passage' ? 'passage' : 'query',
             encoding_format: 'float',
             dimensions: [256, 512, 1024].includes(b.dim) ? b.dim : undefined,
+          }).then((d) => {
+            const v = d.data.map((x) => x.embedding);
+            if (v.length !== input.length) throw new Error('La IA no devolvió todos los vectores. Intenta de nuevo.');
+            return v;
           });
+        const pausa = () => new Promise((r) => setTimeout(r, 800));
         // la API de embeddings falla de vez en cuando: un reintento
-        const d = await emb().catch(() => new Promise((r) => setTimeout(r, 800)).then(emb));
+        const dosVeces = (input) => emb(input).catch(() => pausa().then(() => emb(input)));
+        let vectors,
+          deAUno = false;
+        try {
+          vectors = await emb(texts);
+        } catch (e) {
+          if (e.status === 401 || e.status === 403) throw e; // clave rechazada: repetir no sirve
+          if (e.status === 429 || texts.length < 2) vectors = await pausa().then(() => emb(texts));
+          else {
+            // La API rechaza algunos lotes enteros con un 500, y repetir el mismo lote vuelve a fallar: el
+            // 16-11-2026 rechazó tres consultas seguidas (cada una con su reintento) con las búsquedas de un
+            // cálculo de caída de tensión, las 5 o solo 4 de ellas, mientras aceptaba otros lotes y un texto
+            // suelto. Se pide entonces cada texto por separado, en fila para no gastar la cuota de golpe, con
+            // un reintento por texto.
+            deAUno = true;
+            vectors = [];
+            for (const t of texts) vectors.push((await dosVeces([t]))[0]);
+          }
+        }
         return json(
-          {ok: true, model: EMB, ms: Date.now() - t0, vectors: d.data.map((x) => x.embedding)},
+          {ok: true, model: EMB, ms: Date.now() - t0, vectors, ...(deAUno && {de_a_uno: true})},
           200,
           origin
         );
