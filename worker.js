@@ -16,7 +16,9 @@ const EXIGE_SESION = true; // todas las páginas piden sesión con nv.js
 const SESION_MIN = 30;
 const TOPE_DIA = 1500; // consultas en vivo por día, sumando todas las máquinas
 const RIC_URL = 'https://jsnn15.github.io/normativa/s/ric.json';
-const CORPUS_URL = 'https://jsnn15.github.io/consulta-electrica/s/corpus.json';
+const CORPUS_URL = 'https://jsnn15.github.io/electrical_code_rag_2026/s/corpus.json';
+// Dirección anterior al cambio de nombre del repositorio: se prueba si la nueva no responde.
+const CORPUS_URL_ANTES = 'https://jsnn15.github.io/consulta-electrica/s/corpus.json';
 const RUTAS = new Set(
   'inspect epp gauge turno embed ric supervisa cita identifica confirma revisa verifica critica reformula responde plan redacta juez orienta pedido actividad simple cuaderno'
     .split(' ')
@@ -228,7 +230,7 @@ const TRAMO = 256;
 const NORMAS = {d: [], mat: {}};
 const TRAMOS = new Map();
 async function corpus(env, ids) {
-  const base = (env.CORPUS_URL || CORPUS_URL).replace(/[^/]+$/, 't/');
+  const [base, baseAntes] = [env.CORPUS_URL || CORPUS_URL, CORPUS_URL_ANTES].map((u) => u.replace(/[^/]+$/, 't/'));
   const tramos = [
     ...new Set(
       (Array.isArray(ids) ? ids : [])
@@ -242,6 +244,7 @@ async function corpus(env, ids) {
         TRAMOS.set(
           k,
           fetch(`${base}${k}.json`)
+            .then((r) => (r.ok ? r : fetch(`${baseAntes}${k}.json`)))
             .then((r) => {
               if (!r.ok) throw new Error('no se pudo leer el texto de las normas');
               return r.json();
